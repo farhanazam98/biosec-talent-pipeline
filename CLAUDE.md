@@ -1,0 +1,100 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Purpose
+
+This pipeline catalogs global biosecurity fellowship and training programs into a structured database, as part of the SPAR research project *Mapping Global Talent Pipelines in Biosecurity*. It reads a CSV work queue of program URLs, fetches page content, and uses the Claude API to extract structured metadata against a 17-field schema. Full design is in [`docs/design.md`](docs/design.md).
+
+## Setup
+
+```bash
+pip install -r requirements.txt
+playwright install chromium   # for JS-rendered page fallback
+cp env.example .env           # add ANTHROPIC_API_KEY
+```
+
+## Running the pipeline
+
+**MVP scope is Stage 1 + Stage 2 only**, writing results to CSV. Stage 3 (dedup + Google Sheets) is designed but not yet in scope.
+
+```bash
+# Stage 1: fetch page content → data/raw/*.json
+python src/stage1_ingest.py
+
+# Stage 2: extract structured fields via Claude API → output/stage2_results.csv
+python src/stage2_extract.py
+```
+
+## Data flow
+
+```
+data/work_queue.csv  →  [Stage 1]  →  data/raw/*.json  →  [Stage 2]  →  output/stage2_results.csv
+```
+
+`data/raw/` and `output/` are generated artifacts — both are gitignored and must never be committed. `.env` contains the Anthropic API key and is also gitignored.
+
+## Architecture
+
+Stages are decoupled by file artifacts so each can be re-run independently. Persisting raw page content in Stage 1 means Stage 2 can be re-run as the schema evolves without re-fetching pages.
+
+### Stage 1 — Ingest (`src/stage1_ingest.py`)
+
+Reads `data/work_queue.csv`. For each row: fetches page content via `trafilatura`, with a Playwright fallback for JS-rendered pages. Writes one JSON file to `data/raw/` per record, including `fetch_method`, `fetched_at`, and `fetch_status` (`ok` | `failed` | `partial`).
+
+Failed fetches still produce a JSON and flow through to Stage 2 — failures are never silently dropped.
+
+Work queue columns: `url`, `name_hint`, `lead_org_hint`, `country_hint`, `type_hint`, `active_status_hint`, `region_hint`, `source_doc_id`. All hint columns are nested under `hints{}` in the Stage 1 JSON output to mark the provenance boundary — everything inside `hints` is unverified Gemini output; everything outside is pipeline-produced.
+
+### Stage 2 — Extract (`src/stage2_extract.py`)
+
+Reads Stage 1 JSON files. Makes one Claude API call per record using **forced tool use** against a tool definition that mirrors the 17-field extraction schema. Each extracted field value must include an `evidence` snippet.
+
+Key implementation rules:
+- **Model**: pinned to `claude-sonnet-4-6`, never `"latest"`
+- **Hints as beliefs**: hints are passed in the system prompt as beliefs to verify, not answers — e.g. *"The program is believed to be called X. Confirm or correct each field based on the page content."* Disagreements are logged in `hint_conflicts`
+- **Evidence grounding**: each field's `evidence` snippet is fuzzy-matched against `raw_text` using `rapidfuzz.partial_ratio >= 90`, after normalizing (lowercase, collapse whitespace, strip punctuation). Evidence snippets must be verbatim from `raw_text`. Fields that fail grounding are retained but marked `grounded: false`
+- **Retries**: up to 3 times with exponential backoff on parse errors, missing required fields, or API errors. After all retries fail, emit a record with `extraction_status: "failed"` and a populated `failure_reason` — it still flows downstream
+
+### Stage 3 — Dedup and Write (`src/stage3_dedup_write.py`) *(not MVP)*
+
+Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicates via exact match then cosine similarity (`sentence-transformers` `all-MiniLM-L6-v2`, threshold 0.80 — provisional, validate against labeled duplicates). Writes to Google Sheets: **Programs tab** and per-program **Evidence tabs** named by `program_id`.
+
+`needs_review` is finalized once in Stage 3, not set incrementally. It is `true` if any of: `fetch_status != "ok"`, `extraction_status != "ok"`, any field has `grounded: false`, `hint_conflicts` non-empty, or cosine similarity ≥ 0.80.
+
+## Key design decisions
+
+**Do not change without understanding these:**
+
+- **`hints{}` boundary**: hint columns from the work queue are unverified Gemini output. Nesting them under `hints` in Stage 1 JSON marks this clearly. Do not promote hint values to top-level fields or treat them as ground truth.
+- **17-field schema is fixed**: Stage 2 uses forced tool use against a schema defined in `docs/design.md`. Do not add, remove, or rename fields without updating the schema table there first.
+- **Evidence must be verbatim**: grounding verification uses fuzzy string match against `raw_text`. Paraphrased evidence will fail the check.
+- **Model is pinned**: always `claude-sonnet-4-6`, never a floating alias.
+- **`needs_review` is set once**: Stage 3 collects all conditions and sets the flag in one place. Do not set it earlier in the pipeline.
+
+## Extraction schema (17 fields)
+
+| # | Field | Notes |
+|---|---|---|
+| 1 | Name & Title | Full official program name |
+| 2 | Organisation Providing Course | Host / delivering organization |
+| 3 | Pipeline Type | `formal_training` \| `fellowship_competition` \| `gov_multilateral` |
+| 4 | Country | Country/countries where delivered |
+| 5 | Organisation Funding Course | Funder(s) |
+| 6 | Expected Outcomes | Stated learning or career outcomes |
+| 7 | Syllabus / Course Materials | Topics, modules, curriculum links |
+| 8 | Target Audience | Career stage, background, nationality requirements |
+| 9 | Financial Support Available | Stipends, scholarships, travel grants, waivers |
+| 10 | Visa / Travel Constraints | Nationality restrictions, travel obligations |
+| 11 | Language(s) | Delivery language(s) |
+| 12 | Year Established | Year founded or first offered |
+| 13 | Income Classification | `HIC` \| `LMIC` \| `Both` |
+| 14 | Format | e.g. in-person, online, hybrid, part-time, full-time |
+| 15 | Focus Area | e.g. biosurveillance, policy, lab biosafety, threat assessment |
+| 16 | AI Risks Content Included | `Y` \| `N` |
+| 17 | Dual-Use Risks Content Included | `Y` \| `N` |
+
+## Open design questions (from `docs/design.md`)
+
+- **Cosine threshold**: 0.80 is a starting point. Validate against labeled duplicates before treating it as settled (ELBI is a known test case that appears across multiple regional docs).
+- **Active-status heuristics**: combining `active_status_hint` with fetch signals (e.g. HTTP 404 → `inactive`) needs refinement once real failure patterns are observed.
