@@ -13,46 +13,7 @@ This document outlines the design for a program that extracts relevant fields fr
 
 ## Architecture
 
-```
-Start
-  │
-  ▼
-┌─────────────────────────────┐
-│ Stage 1: Ingestion          │
-│                             │
-│  Read URL from work queue   │
-│           │                 │
-│           ▼                 │
-│  Fetch page (trafilatura)   │
-│           │                 │
-│    Content extracted?       │
-│     yes ◄─┴─► no           │
-│              │              │
-│       Fallback: Playwright  │
-│              │              │
-│      Raw page text ◄────────┘
-└─────────────┬───────────────┘
-              │
-              ▼
-┌─────────────────────────────┐
-│ Stage 2: Extraction         │
-│                             │
-│  Build prompt w/ 17-field   │
-│  schema                     │
-│           │                 │
-│           ▼                 │
-│  Call Claude API            │
-│  (forced tool use)          │
-│           │                 │
-│           ▼                 │
-│  Parse structured JSON      │
-│           │                 │
-│           ▼                 │
-│  Grounding check            │
-│  (evidence snippets vs.     │
-│   raw_text)                 │
-└─────────────────────────────┘
-```
+![Pipeline Architecture](architecture.png)
 
 ---
 
