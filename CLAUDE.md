@@ -98,6 +98,11 @@ Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicat
 
 Prefer simple, direct implementations. Do not add abstraction layers, base classes, or helper utilities unless explicitly asked. When in doubt, write less code.
 
+## Known limitations and future work
+
+- **Multiple work queue files**: Stage 1 currently reads a single `data/work_queue.csv`. Work queues will eventually follow per-region/per-category naming conventions (e.g. `europe_gov_multilateral.csv`). Stage 1 needs to be updated to glob all CSVs from `data/` and process them, with concurrency/batch processing to handle the larger volume.
+- **Single-page extraction**: Stage 2 extracts information from a single fetched page per program. Some programs spread information across multiple pages (e.g. separate curriculum, funding, or application pages). Multi-page crawling is out of scope for the current implementation.
+
 ## Open design questions (from `docs/design.md`)
 
 - **Cosine threshold**: 0.80 is a starting point. Validate against labeled duplicates before treating it as settled (ELBI is a known test case that appears across multiple regional docs).
