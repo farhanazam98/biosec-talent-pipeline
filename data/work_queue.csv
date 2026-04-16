@@ -1,0 +1,21 @@
+url,name_hint,lead_org_hint,country_hint,type_hint,active_status_hint,region_hint,source_doc_id
+https://centerforhealthsecurity.org/education-training/elbi,ELBI Fellowship,Johns Hopkins Center for Health Security,USA,fellowship_competition,active,north_america,gemini_na_fellowships
+https://www.bluedot.org/courses,BlueDot Impact Courses,BlueDot Impact,Canada,formal_training,active,north_america,gemini_na_formal_training
+https://www.nti.org/about/biosecurity-fellowship,NTI Biosecurity Fellowship,Nuclear Threat Initiative,USA,fellowship_competition,active,north_america,gemini_na_fellowships
+https://www.cdc.gov/globalhealth/healthprotection/ghs/index.html,CDC Global Health Security Program,CDC,USA,gov_multilateral,active,north_america,gemini_na_gov
+https://www.hed.org.pk/biosafety-training,Pakistan Biosafety Training,Higher Education Commission Pakistan,Pakistan,formal_training,unknown,south_asia,gemini_sa_formal_training
+https://www.who.int/initiatives/biosafety-biosecurity-and-biorisk-management,WHO Biosafety and Biosecurity Programme,WHO,Switzerland,gov_multilateral,active,south_asia,gemini_sa_gov
+https://www.africacdc.org/program/biosafety-biosecurity,Africa CDC Biosafety and Biosecurity Programme,Africa CDC,Ethiopia,gov_multilateral,active,africa,gemini_af_gov
+https://www.aslm.org/capacity-building,ASLM Laboratory Capacity Building,African Society for Laboratory Medicine,South Africa,formal_training,active,africa,gemini_af_formal_training
+https://www.biosecuritycentral.org/resource/nuclear-threat-initiative-global-health-security-fellowship,NTI Global Health Security Fellowship,Nuclear Threat Initiative,USA,fellowship_competition,unknown,africa,gemini_af_fellowships
+https://www.sipri.org/research/armament-and-disarmament/chemical-and-biological-security,SIPRI CBW Programme,Stockholm International Peace Research Institute,Sweden,gov_multilateral,active,west_asia,gemini_wa_gov
+https://www.opcw.org/our-work/capacity-building,OPCW Capacity Building Programme,OPCW,Netherlands,gov_multilateral,active,west_asia,gemini_wa_gov
+https://www.searo.who.int/health-security,WHO SEARO Health Security,WHO South-East Asia Regional Office,India,gov_multilateral,active,asia_pacific,gemini_ap_gov
+https://www.apec.org/groups/som-steering-committee-on-economic-and-technical-cooperation/working-groups/health,APEC Health Working Group,APEC,Singapore,gov_multilateral,unknown,asia_pacific,gemini_ap_gov
+https://www.ntu.edu.sg/medicine/research/biosecurity,NTU Biosecurity Research Programme,Nanyang Technological University,Singapore,formal_training,active,asia_pacific,gemini_ap_formal_training
+https://www.paho.org/en/topics/health-security,PAHO Health Security Programme,Pan American Health Organization,USA,gov_multilateral,active,south_america,gemini_sam_gov
+https://www.fiocruz.br/bioseguranca,Fiocruz Biosecurity Training,Fiocruz,Brazil,formal_training,active,south_america,gemini_sam_formal_training
+https://www.labiomed.org/fellowships,Latin American Biosecurity Fellowship,LABioMed,Argentina,fellowship_competition,unknown,south_america,gemini_sam_fellowships
+https://www.aims.ac.za/en/research-centre/centres/biomedical,AIMS Biomedical Research Programme,African Institute for Mathematical Sciences,South Africa,formal_training,active,australia,gemini_aus_formal_training
+https://www.nhmrc.gov.au/research-policy/research-priorities/global-health,NHMRC Global Health Security Grants,NHMRC,Australia,gov_multilateral,active,australia,gemini_aus_gov
+https://www.prisms.edu.au/biosecurity-fellowship,Australian Biosecurity Fellowship,University of Sydney,Australia,fellowship_competition,unknown,australia,gemini_aus_fellowships

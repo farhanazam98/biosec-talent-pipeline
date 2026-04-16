@@ -16,7 +16,7 @@ cp env.example .env           # add ANTHROPIC_API_KEY
 
 ## Running the pipeline
 
-**MVP scope is Stage 1 + Stage 2 only**, writing results to CSV. Stage 3 (dedup + Google Sheets) is designed but not yet in scope.
+**MVP scope is Stage 1 + Stage 2 only**. Stage 3 (dedup) is designed but not yet in scope.
 
 ```bash
 # Stage 1: fetch page content → data/raw/*.json
@@ -58,7 +58,7 @@ Key implementation rules:
 
 ### Stage 3 — Dedup and Write (`src/stage3_dedup_write.py`) *(not MVP)*
 
-Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicates via exact match then cosine similarity (`sentence-transformers` `all-MiniLM-L6-v2`, threshold 0.80 — provisional, validate against labeled duplicates). Writes to Google Sheets: **Programs tab** and per-program **Evidence tabs** named by `program_id`.
+Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicates via exact match then cosine similarity (`sentence-transformers` `all-MiniLM-L6-v2`, threshold 0.80 — provisional, validate against labeled duplicates). Writes results to a CSV.
 
 `needs_review` is finalized once in Stage 3, not set incrementally. It is `true` if any of: `fetch_status != "ok"`, `extraction_status != "ok"`, any field has `grounded: false`, `hint_conflicts` non-empty, or cosine similarity ≥ 0.80.
 
@@ -93,6 +93,10 @@ Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicat
 | 15 | Focus Area | e.g. biosurveillance, policy, lab biosafety, threat assessment |
 | 16 | AI Risks Content Included | `Y` \| `N` |
 | 17 | Dual-Use Risks Content Included | `Y` \| `N` |
+
+## Code style
+
+Prefer simple, direct implementations. Do not add abstraction layers, base classes, or helper utilities unless explicitly asked. When in doubt, write less code.
 
 ## Open design questions (from `docs/design.md`)
 
