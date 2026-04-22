@@ -13,11 +13,11 @@ This document outlines the design for a program that extracts relevant fields fr
 
 ## Architecture
 
-![Pipeline Architecture](architecture.png)
+![Pipeline Architecture](pipeline-design.png)
 
 ---
 
-## Input / Outputs
+## Input / Output
 
 ### Stage 1: Ingestion
 
