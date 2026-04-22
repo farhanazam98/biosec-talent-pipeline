@@ -1,6 +1,6 @@
 # Biosecurity Talent Pipeline
 
-A Python pipeline to catalog global biosecurity fellowship and training programs into a structured database. Built as part of the SPAR research project [*Mapping Global Talent Pipelines in Biosecurity*](https://sparai.org/).
+A Python pipeline to catalog global biosecurity fellowship and training programs into a structured database. Built as part of the SPAR research project [*Mapping Global Talent Pipelines in Biosecurity*](https://sparai.org/attachments/proposals/recKAplTbC4arg03R/spar-proposal-1-global-talent-mapping-biosecurity-sengupta-a..pdf).
 
 ## What it does
 

@@ -1,9 +1,9 @@
+import asyncio
 import csv
 import glob
 import json
 import os
 import re
-import time
 from datetime import datetime, timezone
 
 import anthropic
@@ -16,6 +16,7 @@ RAW_DIR = "data/raw"
 OUTPUT_CSV = "output/stage2_results.csv"
 MODEL = "claude-sonnet-4-6"
 MAX_RETRIES = 3
+CONCURRENCY = 5  # max simultaneous Claude API calls — tune up if rate limits allow
 
 FIELDS = [
     "name_and_title",
@@ -41,18 +42,51 @@ FIELD_DESCRIPTIONS = {
     "name_and_title": "Full official program name",
     "organisation_providing_course": "Host / delivering organization",
     "pipeline_type": "One of: formal_training | fellowship_competition | gov_multilateral",
-    "country": "Country or countries where the program is delivered",
+    "country": (
+        "Pipe-delimited list of full country names where the program is delivered (e.g. USA|Canada). "
+        "Use 'Global' if not specific to any country or if 40+ countries are covered. "
+        "Use 'Regional – <region>' (e.g. 'Regional – Africa') if the program targets a broad region without listing specific countries."
+    ),
     "organisation_funding_course": "Funder(s) of the program",
     "expected_outcomes": "Stated learning or career outcomes",
     "syllabus_course_materials": "Topics, modules, or curriculum links",
     "target_audience": "Career stage, background, or nationality requirements for applicants",
-    "financial_support_available": "Stipends, scholarships, travel grants, or fee waivers",
-    "visa_travel_constraints": "Nationality restrictions or travel obligations",
-    "languages": "Delivery language(s)",
+    "financial_support_available": (
+        "Classify as exactly one of: full | partial | free | none | unknown. "
+        "full = tuition, stipend, and/or living costs covered. "
+        "partial = some costs covered (travel grant, fee waiver, accommodation only, etc.). "
+        "free = no tuition fee but no additional financial support. "
+        "none = explicitly no financial support available. "
+        "unknown = not mentioned on the page."
+    ),
+    "visa_travel_constraints": (
+        "Classify as exactly one of: yes | no | unknown. "
+        "yes = any visa requirement, travel obligation, or nationality restriction is mentioned. "
+        "no = page explicitly states no constraints. "
+        "unknown = not mentioned on the page."
+    ),
+    "languages": (
+        "Pipe-delimited list of delivery language names in English (e.g. English|French|Spanish). "
+        "Omit parenthetical notes such as '(simultaneous interpretation)'."
+    ),
     "year_established": "Year the program was founded or first offered",
     "income_classification": "One of: HIC | LMIC | Both",
     "format": "e.g. in-person, online, hybrid, part-time, full-time",
-    "focus_area": "e.g. biosurveillance, policy, lab biosafety, threat assessment",
+    "focus_area": (
+        "Pipe-delimited list of tags from this controlled vocabulary: "
+        "biosafety (lab biosafety, biorisk management, containment) | "
+        "biosecurity_policy (biosecurity governance, arms control, BWC, regulatory frameworks) | "
+        "biodefense (biodefense, CBRN defense, threat response) | "
+        "biosurveillance (disease surveillance, early warning, outbreak detection) | "
+        "dual_use (dual-use research of concern, DURC) | "
+        "laboratory_skills (lab techniques, diagnostics, capacity building) | "
+        "pandemic_preparedness (pandemic response, epidemic preparedness) | "
+        "health_security (health security systems, infectious disease control) | "
+        "one_health (One Health, human-animal-environment interface) | "
+        "threat_assessment (risk assessment, strategic analysis, intelligence) | "
+        "ai_biosecurity (AI risks in biology, AI biosecurity governance). "
+        "Choose only tags that clearly apply. Use a short free-text value only if nothing fits."
+    ),
     "ai_risks_content_included": "Y or N — does the program cover AI risks?",
     "dual_use_risks_content_included": "Y or N — does the program cover dual-use risks?",
 }
@@ -131,7 +165,7 @@ def detect_hint_conflicts(fields: dict, hints: dict) -> list:
     return conflicts
 
 
-def extract(client: anthropic.Anthropic, record: dict) -> dict:
+async def extract(client: anthropic.AsyncAnthropic, record: dict) -> dict:
     hints = record.get("hints", {})
     raw_text = record.get("raw_text", "")
     system = build_system_prompt(hints)
@@ -140,7 +174,7 @@ def extract(client: anthropic.Anthropic, record: dict) -> dict:
     last_error = ""
     for attempt in range(MAX_RETRIES):
         try:
-            response = client.messages.create(
+            response = await client.messages.create(
                 model=MODEL,
                 max_tokens=4096,
                 system=system,
@@ -151,12 +185,10 @@ def extract(client: anthropic.Anthropic, record: dict) -> dict:
             tool_input = next(
                 block.input for block in response.content if block.type == "tool_use"
             )
-            # Validate all required fields are present
             for field in FIELDS:
                 if field not in tool_input:
                     raise ValueError(f"Missing required field: {field}")
 
-            # Grounding check
             annotated_fields = {}
             for field in FIELDS:
                 entry = tool_input[field]
@@ -178,9 +210,8 @@ def extract(client: anthropic.Anthropic, record: dict) -> dict:
         except Exception as e:
             last_error = str(e)
             if attempt < MAX_RETRIES - 1:
-                time.sleep(2 ** attempt)
+                await asyncio.sleep(2 ** attempt)
 
-    # All retries exhausted
     empty_fields = {f: {"value": "", "evidence": "", "grounded": False} for f in FIELDS}
     return {
         "extraction_status": "failed",
@@ -211,41 +242,58 @@ def build_csv_row(record: dict, result: dict) -> dict:
 
 CSV_COLUMNS = (
     ["url", "source_doc_id", "fetch_status", "fetch_method", "fetched_at",
-     "extraction_status", "failure_reason", "hint_conflicts", "ungrounded_fields"]
+     "extraction_status", "failure_reason"]
     + FIELDS
+    + ["ungrounded_fields", "hint_conflicts"]
 )
 
 
-def main():
+async def process_file(sem: asyncio.Semaphore, client: anthropic.AsyncAnthropic,
+                       path: str, index: int, total: int) -> tuple:
+    async with sem:
+        with open(path, encoding="utf-8") as f:
+            record = json.load(f)
+        result = await extract(client, record)
+        row = build_csv_row(record, result)
+        status = result["extraction_status"]
+        print(f"[{status}] ({index}/{total}) {record['url']}")
+        return index, row
+
+
+async def main():
     raw_files = sorted(glob.glob(os.path.join(RAW_DIR, "*.json")))
     if not raw_files:
         print(f"No JSON files found in {RAW_DIR}. Run stage1_ingest.py first.")
         return
 
     os.makedirs("output", exist_ok=True)
-    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    print(f"Processing {len(raw_files)} records")
+    if os.path.exists(OUTPUT_CSV):
+        os.remove(OUTPUT_CSV)
+        print(f"Cleared existing {OUTPUT_CSV}")
+
+    client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    print(f"Processing {len(raw_files)} records (concurrency={CONCURRENCY})")
+
+    sem = asyncio.Semaphore(CONCURRENCY)
+    tasks = [
+        process_file(sem, client, path, i, len(raw_files))
+        for i, path in enumerate(raw_files, 1)
+    ]
+    results = await asyncio.gather(*tasks)
+
+    # Sort by original index to preserve input order in the CSV
+    results.sort(key=lambda x: x[0])
 
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         writer.writeheader()
-
-        for i, path in enumerate(raw_files, 1):
-            with open(path, encoding="utf-8") as jf:
-                record = json.load(jf)
-
-            url = record["url"]
-            result = extract(client, record)
-            row = build_csv_row(record, result)
+        for _, row in results:
             writer.writerow(row)
-            f.flush()
-
-            status = result["extraction_status"]
-            print(f"[{status}] ({i}/{len(raw_files)}) {url}")
 
     print(f"\nDone. Results written to {OUTPUT_CSV}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

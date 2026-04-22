@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import glob
 import json
 import os
 import re
@@ -15,6 +16,7 @@ load_dotenv()
 
 WORK_QUEUE = "data/work_queue.csv"
 RAW_DIR = "data/raw"
+CONCURRENCY = 10  # max simultaneous fetches
 
 # Phrases that indicate the page blocked the request rather than serving real content.
 BLOCK_SIGNALS = [
@@ -46,8 +48,8 @@ def is_blocked(text: str) -> bool:
     return any(signal in lower for signal in BLOCK_SIGNALS)
 
 
-def http_get(url: str) -> tuple:
-    """Fetch URL with urllib, return (html, status_code). Never raises."""
+def _http_get_sync(url: str) -> tuple:
+    """Blocking HTTP fetch — call via run_in_executor to avoid stalling the event loop."""
     req = urllib.request.Request(
         url,
         headers={"User-Agent": "Mozilla/5.0 (compatible; biosec-pipeline/1.0)"},
@@ -61,16 +63,17 @@ def http_get(url: str) -> tuple:
         return None, 0
 
 
-def fetch_with_trafilatura(url: str) -> tuple[str, str, str]:
+async def fetch_with_trafilatura(url: str) -> tuple:
     """Returns (raw_text, fetch_method, fetch_status)."""
-    html, status_code = http_get(url)
-    if status_code == 0:
-        return "", "trafilatura", "failed"
-    if status_code >= 400:
+    loop = asyncio.get_event_loop()
+    html, status_code = await loop.run_in_executor(None, _http_get_sync, url)
+
+    if status_code == 0 or status_code >= 400:
         return "", "trafilatura", "failed"
     if not html:
         return "", "trafilatura", "failed"
-    text = trafilatura.extract(html) or ""
+
+    text = await loop.run_in_executor(None, lambda: trafilatura.extract(html) or "")
     if not text.strip():
         return "", "trafilatura", "partial"
     if is_blocked(text):
@@ -78,7 +81,7 @@ def fetch_with_trafilatura(url: str) -> tuple[str, str, str]:
     return text, "trafilatura", "ok"
 
 
-async def fetch_with_playwright(url: str) -> tuple[str, str, str]:
+async def fetch_with_playwright(url: str) -> tuple:
     """Returns (raw_text, fetch_method, fetch_status)."""
     try:
         async with async_playwright() as p:
@@ -94,7 +97,8 @@ async def fetch_with_playwright(url: str) -> tuple[str, str, str]:
     if status_code >= 400:
         return "", "playwright", "failed"
 
-    text = trafilatura.extract(html) or ""
+    loop = asyncio.get_event_loop()
+    text = await loop.run_in_executor(None, lambda: trafilatura.extract(html) or "")
     if not text.strip():
         return "", "playwright", "partial"
     if is_blocked(text):
@@ -102,9 +106,9 @@ async def fetch_with_playwright(url: str) -> tuple[str, str, str]:
     return text, "playwright", "ok"
 
 
-async def fetch(url: str) -> tuple[str, str, str]:
+async def fetch(url: str) -> tuple:
     """Try trafilatura first, fall back to playwright."""
-    raw_text, method, status = fetch_with_trafilatura(url)
+    raw_text, method, status = await fetch_with_trafilatura(url)
     if status == "ok":
         return raw_text, method, status
     return await fetch_with_playwright(url)
@@ -129,24 +133,34 @@ def build_record(row: dict, raw_text: str, fetch_method: str, fetch_status: str)
     }
 
 
+async def process_row(sem: asyncio.Semaphore, row: dict, index: int, total: int) -> None:
+    async with sem:
+        url = row["url"]
+        raw_text, fetch_method, fetch_status = await fetch(url)
+        record = build_record(row, raw_text, fetch_method, fetch_status)
+        out_path = os.path.join(RAW_DIR, url_to_filename(url))
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(record, f, ensure_ascii=False, indent=2)
+        print(f"[{fetch_status}] ({index}/{total}) {url}")
+
+
 async def main():
     os.makedirs(RAW_DIR, exist_ok=True)
+
+    existing = glob.glob(os.path.join(RAW_DIR, "*.json"))
+    for path in existing:
+        os.remove(path)
+    if existing:
+        print(f"Cleared {len(existing)} existing files from {RAW_DIR}/")
 
     with open(WORK_QUEUE, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
-    print(f"Processing {len(rows)} records from {WORK_QUEUE}")
+    print(f"Processing {len(rows)} records from {WORK_QUEUE} (concurrency={CONCURRENCY})")
 
-    for i, row in enumerate(rows, 1):
-        url = row["url"]
-        raw_text, fetch_method, fetch_status = await fetch(url)
-        record = build_record(row, raw_text, fetch_method, fetch_status)
-
-        out_path = os.path.join(RAW_DIR, url_to_filename(url))
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(record, f, ensure_ascii=False, indent=2)
-
-        print(f"[{fetch_status}] ({i}/{len(rows)}) {url}")
+    sem = asyncio.Semaphore(CONCURRENCY)
+    tasks = [process_row(sem, row, i, len(rows)) for i, row in enumerate(rows, 1)]
+    await asyncio.gather(*tasks)
 
     print(f"\nDone. {len(rows)} files written to {RAW_DIR}/")
 
