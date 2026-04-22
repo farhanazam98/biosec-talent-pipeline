@@ -1,0 +1,14 @@
+{
+  "url": "https://www.quimicaybiologia.usach.cl/programas/cursos/gestion-de-la-bioseguridad-y-prevencion-de-riesgos-laborales-para-laboratorios",
+  "raw_text": "Clase abierta y gratuita: Fármacos II y el nuevo escenario para los medicamentos y dispositivos médicos\nGestión de la Bioseguridad y Prevención de Riesgos Laborales para Laboratorios Clínicos y de Investigación Científica\nDuración:\n36 horas cronológicas\nEmail:\nsoledad.ortega@usach.cl\nTeléfono:\n27 181 051",
+  "hints": {
+    "name": "Gestión de la Bioseguridad y Prevención de Riesgos",
+    "lead_org": "Universidad de Santiago de Chile (USACH)",
+    "country": "Chile",
+    "type": "short_course",
+    "active_status": "unknown",
+    "region": "south_america"
+  },
+  "expected_label": "rejected",
+  "rationale": "Occupational safety course — lab risk prevention, not biosecurity policy/threat focus"
+}

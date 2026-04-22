@@ -1,0 +1,14 @@
+{
+  "url": "https://www.uvri.go.ug/training",
+  "raw_text": "Training Division\nThe training division is one of divisions under Finance and Administration at UVRI.\nA lot of training to support further career development for the best young scientists at graduate, Master of science and post-doctoral researchers with support from our partners on campus, in the country and outside Uganda is appreciated. For the academic year 2018 UVRI supported over 80 internship attachments for graduate and MSC interns. This year 2019, 70 placements are lined up. Short term placement for internship at UVRI is by application form on the UVRI website (http://www.uvri.go.ug/uvri-internship-forms. UVRI also conducts open days every after two years to interest pupils to the science career. Training at UVRI is conducted with support from our partners. With such support, the Institute is rapidly developing as an internationally recognized center for research training, with workshops and short courses providing opportunities both for Institute staff, and for national, regional and international clientele.\nThe Institute strives to maintain competency and improve scientific and technical skills of clinical microbiology, laboratory, and medical practitioners. This is done by providing public health microbiology training to scientists, clinicians, public health specialist and environmental officers through in-service training, workshops, conferences, short and long term courses and attachments. Institute staff participate in training at international level of laboratory scientists through exchange visits, short courses, masters and PhD level training. The Institute organizes and contributes to national and international training workshops and meetings many of which are attended by staff at all levels. UVRI also contributes to the public understanding of science by organizing open days to schools, colleges and universities, presentations to public invited, press conferences and releases, articles in the print media, radio and TV talk shows. For the open day for 2018 for instance, UVRI reached out to over 1000 students from secondary schools and Universities in Uganda Scientific staff are always encouraged to obtain higher qualifications, write scientific papers and winning grants.",
+  "hints": {
+    "name": "UVRI Internship Programme",
+    "lead_org": "Uganda Virus Research Institute",
+    "country": "Uganda",
+    "type": "lab_network",
+    "active_status": "active",
+    "region": "africa"
+  },
+  "expected_label": "accept",
+  "rationale": "Uganda Virus Research Institute training/internship division"
+}

@@ -1,0 +1,14 @@
+{
+  "url": "https://bioethicscenter.net/new-courses-in-research-administration-and-coordination/",
+  "raw_text": "The Center for Bioethics and Research (West African Bioethics Training Program) announces new courses in Research Administration and Coordination\nAs modern research grows in size and complexity, researchers, research organizations and institutions continue to appreciate the need for staff who have training in Research Administration and Research Coordination. In order to meet this need, we have partnered with the University of Miami Collaborative Institutional Training Initiative (CITI) to offer two new courses in addition to the courses that we currently offer in research ethics, responsible conduct of research, good clinical practice, conflicts of interest etc.\nThe new courses are:\n- Essentials of Research Administration (ERA) course\nThis course provides an overview and explanation of research administration and professional positions within sponsored programs, as well as responsibilities for research administration. - Clinical Research Coordinator (CRC) course.\nThis course provides foundational training specifically focused on operational and regulatory elements necessary for the ethical conduct of clinical research, tailored to the needs of clinical research professionals.\nAs part of the generous support of the United States’ National Institutes of Health (NIH)/Fogarty International Center (FIC), students, researchers and research staff of universities, teaching hospitals, research organizations etc. in Nigeria and other parts of West Africa can access these training courses along with over 20 other research ethics, responsible conduct of research and, biosafety and biosecurity courses.\nClick here to learn more about how to complete the CITI-IRB training program",
+  "hints": {
+    "name": "CITI Research Administration and Coordination",
+    "lead_org": "Center for Bioethics and Research (West Africa)",
+    "country": "Nigeria",
+    "type": "online_course",
+    "active_status": "unknown",
+    "region": "africa"
+  },
+  "expected_label": "rejected",
+  "rationale": "Research administration courses, not biosecurity"
+}

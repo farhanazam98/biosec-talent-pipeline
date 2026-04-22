@@ -92,52 +92,111 @@ For each row: fetch page content via `trafilatura` with a Playwright fallback fo
 
 ---
 
-### Stage 2: Extraction
+### Stage 2: Classification
 
-**Input:** the Stage 1 output JSON plus the 17-field extraction schema.
+**Input:** Stage 1 output (`data/raw/*.json`).
 
-**Processing:** one Claude API call per record, using forced tool use against a tool definition that mirrors the 17-field extraction schema. The tool requires an `evidence` snippet for each field value.
+**Purpose:** Stage 1 input comes from Gemini Deep Research prompts that prioritize recall — the URLs include non-biosecurity entries (funder landing pages, press releases, generic org homepages). This stage filters records before extraction using a lightweight classifier (Haiku 4.5) to reduce API costs and noise.
 
-- Model is pinned to a specific version string (e.g. `claude-sonnet-4-6`), not `latest`.
-- Hints are passed in the system prompt as beliefs to verify, not as answers. Example framing: *"The program is believed to be called ELBI Fellowship, based in the USA. Confirm or correct each field based on the page content."* When extraction disagrees with a hint, the disagreement is logged in `hint_conflicts`.
-- After extraction, each field's `evidence` snippet is checked against `raw_text` using fuzzy matching (`rapidfuzz.partial_ratio >= 90`). Normalization before matching: lowercase, collapse whitespace, strip punctuation. Fields that fail grounding are retained but marked `grounded: false`, contributing a reason to `needs_review` in Stage 3.
-- On malformed tool output (parse error, missing required fields, API error): retry up to 3 times with exponential backoff. If all retries fail, emit a record with empty field values, `extraction_status: "failed"`, and a populated `failure_reason`. The record still flows to Stage 3 so the failure is visible for manual review.
+**Processing:** All records are submitted as a single Anthropic Batch API request (`client.messages.batches.create()`). The classifier uses forced tool use (`classify_program`) against a detailed system prompt containing scope rules, edge cases, and confidence calibration guidance.
 
-#### Output
+The system prompt is cached across all records via `cache_control: {"type": "ephemeral"}` on the system message block.
+
+#### Scope rules
+
+**In scope:**
+- Programs with identifiable individual participants, defined activities, time- or credential-bounded scope, and biosecurity-relevant content (degrees, certificates, fellowships, internships, competitions, conferences with early-career tracks, government training, bilateral/multilateral capacity-building, lab network training, professional certification)
+- Funders whose primary or named focus includes biosecurity talent or workforce development
+
+**Out of scope:**
+- Articles, reports, blog posts, press releases about programs
+- National biosecurity strategy documents and white papers
+- Generic org homepages without a specific program described
+- Programs outside biosecurity scope (general public health, general epidemiology, agricultural biosecurity)
+- One-off events without ongoing cohort structure
+
+**Edge cases:**
+- Inactive/closed programs → in scope (activity status is a separate field)
+- Degree programs with biosecurity specialization → in scope if substantive
+- Multi-country programs → single entity
+- One Health programs → in scope only if GCBR-relevant framing
+
+#### Classifier tool output
 
 ```json
 {
-  "extraction_status": "ok",
-  "fields": {
-    "program_name": {
-      "value": "Emerging Leaders in Biosecurity Fellowship",
-      "evidence": "The Emerging Leaders in Biosecurity Fellowship (ELBI) is a part-time, year-long program",
-      "grounded": true
-    },
-    "host_organization": {
-      "value": "Johns Hopkins Center for Health Security",
-      "evidence": "Established in 2010 by the Johns Hopkins Center for Health Security",
-      "grounded": true
-    }
-  },
-  "hint_conflicts": [
-    {
-      "field": "country",
-      "hint_value": "USA",
-      "extracted_value": "USA, Canada",
-      "evidence": "open to applicants based in the US or Canada"
-    }
-  ]
+  "is_pipeline_entity": true,
+  "entity_type": "program | funder | other",
+  "confidence": 0.92,
+  "reasoning": "One sentence explaining the decision",
+  "evidence": "Verbatim snippet from the page"
 }
+```
+
+#### Tiered routing
+
+Thresholds are configured in `config/classification.yaml`:
+
+```
+high_accept_threshold: 0.85
+high_reject_threshold: 0.95
+```
+
+| Condition | Status |
+|---|---|
+| `is_pipeline_entity == true` AND `confidence >= high_accept_threshold` | `accept` |
+| `is_pipeline_entity == false` AND `confidence >= high_reject_threshold` | `rejected` |
+| Everything else | `review` |
+| API/parse errors | `error` (routed to review tier) |
+
+The reject threshold (0.95) is deliberately higher than the accept threshold (0.85) because the classifier has a strong positive bias — it tends to classify most pages as pipeline entities. A high reject threshold ensures we only auto-reject when the classifier is very confident.
+
+#### Output (one JSON file per record, written to `data/classified/`)
+
+Same structure as Stage 1 JSON, enriched with classification fields:
+
+```json
+{
+  "...all Stage 1 fields...",
+  "classification_status": "accept | review | rejected | error",
+  "classification_confidence": 0.92,
+  "classification_reasoning": "One-sentence explanation",
+  "classification_evidence": "Verbatim snippet from raw_text",
+  "entity_type": "program | funder | other"
+}
+```
+
+#### Calibration
+
+Thresholds were tuned using `scripts/calibrate_classifier.py` against 40 labeled fixtures in `tests/fixtures/classification/`. The calibration methodology minimizes wrong-rejects (losing real pipeline entries, weight 3x) first, then wrong-accepts (noise flowing to extraction, weight 1x). Results are documented in `docs/calibration_report.md`.
+
+---
+
+### Stage 3: Extraction
+
+**Input:** Stage 2 output (`data/classified/*.json`) plus the 17-field extraction schema.
+
+**Filtering:** Only records with `classification_status == "accept"` are sent to the Claude API for extraction. Records with other statuses (review, rejected, error) are passed through with empty extraction fields and `extraction_status: "skipped"`.
+
+**Processing:** one Claude API call per accepted record, using forced tool use against a tool definition that mirrors the 17-field extraction schema. The tool requires an `evidence` snippet for each field value.
+
+- Model is pinned to a specific version string (e.g. `claude-sonnet-4-6`), not `latest`.
+- Hints are passed in the system prompt as beliefs to verify, not as answers. Example framing: *"The program is believed to be called ELBI Fellowship, based in the USA. Confirm or correct each field based on the page content."* When extraction disagrees with a hint, the disagreement is logged in `hint_conflicts`.
+- After extraction, each field's `evidence` snippet is checked against `raw_text` using fuzzy matching (`rapidfuzz.partial_ratio >= 90`). Normalization before matching: lowercase, collapse whitespace, strip punctuation. Fields that fail grounding are retained but marked `grounded: false`, contributing a reason to `needs_review` in Stage 4.
+- On malformed tool output (parse error, missing required fields, API error): retry up to 3 times with exponential backoff. If all retries fail, emit a record with empty field values, `extraction_status: "failed"`, and a populated `failure_reason`. The record still flows to Stage 4 so the failure is visible for manual review.
+
+#### Output (`output/stage3_results.csv`)
+
+CSV columns include classification metadata from Stage 2 (`classification_status`, `classification_confidence`, `classification_reasoning`, `entity_type`) followed by extraction fields. All records from Stage 2 appear in the CSV — non-accepted records have empty extraction fields.
 ```
 
 ---
 
 ## Schemas
 
-The pipeline distinguishes the **extraction schema** (what Claude returns in Stage 2) from the **record schema** (what ends up in the Google Sheet after Stage 3). Separating the two keeps the LLM focused on fields actually extractable from page content, and avoids asking it to guess values the pipeline already knows.
+The pipeline distinguishes the **extraction schema** (what Claude returns in Stage 3) from the **record schema** (what ends up in the Google Sheet after Stage 4). Separating the two keeps the LLM focused on fields actually extractable from page content, and avoids asking it to guess values the pipeline already knows.
 
-### Extraction schema — 17 fields (Stage 2 tool definition)
+### Extraction schema — 17 fields (Stage 3 tool definition)
 
 | # | Field | Notes |
 |---|---|---|
@@ -159,7 +218,7 @@ The pipeline distinguishes the **extraction schema** (what Claude returns in Sta
 | 16 | AI Risks Content Included | `Y` \| `N` |
 | 17 | Dual-Use Risks Content Included | `Y` \| `N` |
 
-### Pipeline-populated fields — 4 fields (Stage 3)
+### Pipeline-populated fields — 4 fields (Stage 4)
 
 | Field | Source |
 |---|---|
@@ -175,16 +234,19 @@ The pipeline distinguishes the **extraction schema** (what Claude returns in Sta
 | `program_id` | Deterministic hash of normalized `name + org` |
 | `needs_review` | `true` if any review condition triggered |
 | `review_reasons` | List of conditions that triggered `needs_review` |
-| `extraction_status` | `ok` \| `failed` |
+| `classification_status` | `accept` \| `review` \| `rejected` \| `error` |
+| `classification_confidence` | 0.0–1.0 confidence from classifier |
+| `entity_type` | `program` \| `funder` \| `other` |
+| `extraction_status` | `ok` \| `failed` \| `skipped` |
 | `fetch_status` | `ok` \| `failed` \| `partial` |
 | `hint_conflicts` | Fields where extraction disagreed with a Gemini hint |
 | `source_doc_id` | Provenance back to the originating Gemini doc |
 
 ---
 
-## Stage 3: Dedup and Write
+## Stage 4: Dedup and Write *(not MVP)*
 
-**Input:** Stage 2 output record plus upstream data from Stage 1 (hints, fetch metadata, `raw_text`).
+**Input:** Stage 3 output record plus upstream data from earlier stages (hints, fetch metadata, classification metadata, `raw_text`).
 
 ### Processing
 

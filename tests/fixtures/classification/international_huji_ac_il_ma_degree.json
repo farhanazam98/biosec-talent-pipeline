@@ -1,0 +1,14 @@
+{
+  "url": "https://international.huji.ac.il/ma-degree",
+  "raw_text": "The Hebrew University websites utilize cookies to enhance user experience and analyze site usage. By continuing to browse these sites, you consent to our use of cookies.",
+  "hints": {
+    "name": "International Master of Public Health (IMPH)",
+    "lead_org": "Hebrew University of Jerusalem",
+    "country": "Israel",
+    "type": "degree",
+    "active_status": "unknown",
+    "region": "west_asia"
+  },
+  "expected_label": "review",
+  "rationale": "Cookie consent page only — no actual program content fetched"
+}

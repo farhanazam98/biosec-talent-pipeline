@@ -1,0 +1,14 @@
+{
+  "url": "https://www.interpol.int/Crimes/Terrorism/Bioterrorism",
+  "raw_text": "The threat\nThe spread of an infectious or toxic biological agent can happen without warning. It can threaten humans, animals and plants, causing widespread illness and death, and instilling fear and panic on a transnational scale.\nPrevent, Prepare, Respond\nThe successful management of an incident involving the release of bacteria, viruses, or biological toxins, whether of a natural, accidental, or deliberate origin, relies on coordination across multiple sectors. Implementing a whole of government approach is essential.\nThis includes cooperation of national stakeholders involved in preparing for, preventing and responding to biological incidents on an operational, tactical, and strategic level. In a globalized world, these efforts must extend regionally and internationally to increase capabilities and knowledge across local communities and borders.\nAt INTERPOL, we aim to reduce the threat of bioterrorism by establishing effective countermeasures as part of a global security strategy.\nGlobal Biosecurity Enhancement Programme\nOur dedicated programme supports member countries to enhance their capabilities to successfully manage biological threats and incidents. We do this by increasing global awareness of the biological threat landscape, strengthening cooperation among relevant actors, increasing information sharing, offering a wide range of training, and by providing investigative support.\nThe programme focuses on three pillars, and activities can be global or country-specific.\n- Police data management and analysis, notably our BioTracker early warning tool.\n- Expertise, including capacity building and crisis support.\n- Building global partnerships\nGender inclusivity\nAligned with INTERPOL’s Gender Mainstreaming Framework for Capacity Building, we are strongly committed to increasing gender parity. This commitment is maintained, promoted and monitored throughout our programming efforts to ensure gender is considered at all stages of our initiatives.\nContact the BTPU for information on publications",
+  "hints": {
+    "name": "INTERPOL Bioterrorism Prevention Training (Project RHINO)",
+    "lead_org": "INTERPOL",
+    "country": "Global (including South Asia)",
+    "type": "multilateral",
+    "active_status": "active",
+    "region": "south_asia"
+  },
+  "expected_label": "accept",
+  "rationale": "INTERPOL bioterrorism prevention training (Project RHINO)"
+}

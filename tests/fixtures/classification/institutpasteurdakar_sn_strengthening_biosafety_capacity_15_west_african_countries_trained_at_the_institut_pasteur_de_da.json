@@ -1,0 +1,14 @@
+{
+  "url": "https://institutpasteurdakar.sn/strengthening-biosafety-capacity-15-west-african-countries-trained-at-the-institut-pasteur-de-dakar/",
+  "raw_text": "From 23 to 27 February 2026, the Regional Centre of Excellence in Biosafety and Biosecurity (RCoEBB – Africa CDC), hosted at the Institut Pasteur de Dakar, organised its 4th regional training session at CARE, focusing on Level 1 Biorisk Management. Participants from fifteen West African countries took part.\nAn intensive regional certification programme\nThis five-day programme, led by Africa CDC, aims to strengthen the skills of laboratory and public health professionals in the safe handling of biological agents, risk assessment and incident management. At the close of the training, participants who met the required criteria sat for the examination leading to the Level 1 Biorisk Management Expert certification.\nThis certification provides an essential foundation for the sustainable strengthening of health security systems across the region, equipping health professionals with the competencies needed to prevent and manage biological incidents in their respective countries.\nFifteen countries united for regional health security\nProfessionals from Benin, Burkina Faso, Cabo Verde, Côte d’Ivoire, The Gambia, Ghana, Guinea, Guinea-Bissau, Liberia, Mali, Niger, Nigeria, Senegal, Sierra Leone and Togo participated in this session. The geographic diversity of participants reflects the regional ambition of the programme and the pivotal role played by the Institut Pasteur de Dakar as a regional hub.\nIPD: a regional hub for public health training\nHosting the Regional Centre of Excellence in Biosafety and Biosecurity confirms the Institut Pasteur de Dakar’s vocation as a reference platform for health professional training in West Africa. This mission is part of the institution’s broader commitment to regional capacity building, alongside Africa CDC and partner national health systems across the continent.",
+  "hints": {
+    "name": "Centre for Africa’s Resilience to Epidemics (CARE) Training",
+    "lead_org": "Institut Pasteur de Dakar",
+    "country": "West Africa (15 ECOWAS Countries)",
+    "type": "lab_network",
+    "active_status": "active",
+    "region": "africa"
+  },
+  "expected_label": "accept",
+  "rationale": "Regional biosafety training for 15 West African countries"
+}

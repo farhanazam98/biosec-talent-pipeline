@@ -12,8 +12,8 @@ from rapidfuzz import fuzz
 
 load_dotenv()
 
-RAW_DIR = "data/raw"
-OUTPUT_CSV = "output/stage2_results.csv"
+CLASSIFIED_DIR = "data/classified"
+OUTPUT_CSV = "output/stage3_results.csv"
 MODEL = "claude-sonnet-4-6"
 MAX_RETRIES = 3
 CONCURRENCY = 5  # max simultaneous Claude API calls — tune up if rate limits allow
@@ -228,6 +228,10 @@ def build_csv_row(record: dict, result: dict) -> dict:
         "fetch_status": record.get("fetch_status", ""),
         "fetch_method": record.get("fetch_method", ""),
         "fetched_at": record.get("fetched_at", ""),
+        "classification_status": record.get("classification_status", ""),
+        "classification_confidence": record.get("classification_confidence", ""),
+        "classification_reasoning": record.get("classification_reasoning", ""),
+        "entity_type": record.get("entity_type", ""),
         "extraction_status": result["extraction_status"],
         "failure_reason": result.get("failure_reason", ""),
         "hint_conflicts": json.dumps(result["hint_conflicts"]) if result["hint_conflicts"] else "",
@@ -242,7 +246,8 @@ def build_csv_row(record: dict, result: dict) -> dict:
 
 CSV_COLUMNS = (
     ["url", "source_doc_id", "fetch_status", "fetch_method", "fetched_at",
-     "extraction_status", "failure_reason"]
+     "classification_status", "classification_confidence", "classification_reasoning",
+     "entity_type", "extraction_status", "failure_reason"]
     + FIELDS
     + ["ungrounded_fields", "hint_conflicts"]
 )
@@ -253,17 +258,31 @@ async def process_file(sem: asyncio.Semaphore, client: anthropic.AsyncAnthropic,
     async with sem:
         with open(path, encoding="utf-8") as f:
             record = json.load(f)
-        result = await extract(client, record)
+
+        classification = record.get("classification_status", "")
+        if classification == "accept":
+            result = await extract(client, record)
+            status = result["extraction_status"]
+            print(f"[{status}] ({index}/{total}) {record['url']}")
+        else:
+            # Skip extraction for review/rejected/error records
+            empty_fields = {f: {"value": "", "evidence": "", "grounded": False} for f in FIELDS}
+            result = {
+                "extraction_status": "skipped",
+                "fields": empty_fields,
+                "hint_conflicts": [],
+                "failure_reason": f"classification_status={classification}",
+            }
+            print(f"[skipped:{classification}] ({index}/{total}) {record['url']}")
+
         row = build_csv_row(record, result)
-        status = result["extraction_status"]
-        print(f"[{status}] ({index}/{total}) {record['url']}")
         return index, row
 
 
 async def main():
-    raw_files = sorted(glob.glob(os.path.join(RAW_DIR, "*.json")))
-    if not raw_files:
-        print(f"No JSON files found in {RAW_DIR}. Run stage1_ingest.py first.")
+    classified_files = sorted(glob.glob(os.path.join(CLASSIFIED_DIR, "*.json")))
+    if not classified_files:
+        print(f"No JSON files found in {CLASSIFIED_DIR}. Run stage2_classify.py first.")
         return
 
     os.makedirs("output", exist_ok=True)
@@ -274,12 +293,18 @@ async def main():
 
     client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-    print(f"Processing {len(raw_files)} records (concurrency={CONCURRENCY})")
+    # Count records by classification status
+    accept_count = sum(
+        1 for p in classified_files
+        if json.load(open(p, encoding="utf-8")).get("classification_status") == "accept"
+    )
+    print(f"Processing {len(classified_files)} records ({accept_count} accepted, "
+          f"{len(classified_files) - accept_count} skipped) (concurrency={CONCURRENCY})")
 
     sem = asyncio.Semaphore(CONCURRENCY)
     tasks = [
-        process_file(sem, client, path, i, len(raw_files))
-        for i, path in enumerate(raw_files, 1)
+        process_file(sem, client, path, i, len(classified_files))
+        for i, path in enumerate(classified_files, 1)
     ]
     results = await asyncio.gather(*tasks)
 

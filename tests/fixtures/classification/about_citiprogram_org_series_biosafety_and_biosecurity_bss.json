@@ -1,0 +1,14 @@
+{
+  "url": "https://about.citiprogram.org/series/biosafety-and-biosecurity-bss/",
+  "raw_text": "The Biosafety and Biosecurity (BSS) Comprehensive series comprises the BSS Fundamentals and BSS Advanced series. The combined series addresses fundamental concepts, such as biosafety principles, emergency response procedures, personal protective equipment, dual-use research of concern, gene transfer, NIH recombinant DNA guidelines, incident response, and select agent regulations. It also covers IBC leadership, animal biosafety practices, nanotechnology oversight, USDA permitting processes, Category B packages and other hazardous materials shipments, and laboratory biosecurity practices and plan. Through self-paced, expert-developed courses, this series empowers learners to mitigate risks, refine risk assessments, maintain regulatory compliance, and uphold the highest standards of laboratory safety and biosecurity across diverse research, clinical, and teaching settings.\nOrganizational Subscription Price: Available as part of an organizational subscription package or for $1,080 per year/per site as a subscription add-on for government and non-profit organizations; $1,200 per year/per site as a subscription add-on for for-profit organizations.",
+  "hints": {
+    "name": "CITI Program Biosafety & Biosecurity Series",
+    "lead_org": "CITI Program",
+    "country": "Global / Europe",
+    "type": "lab_network",
+    "active_status": "active",
+    "region": "europe"
+  },
+  "expected_label": "accept",
+  "rationale": "Online biosafety/biosecurity training module series"
+}

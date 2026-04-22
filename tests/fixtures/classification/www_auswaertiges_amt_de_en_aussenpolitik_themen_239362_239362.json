@@ -1,0 +1,14 @@
+{
+  "url": "https://www.auswaertiges-amt.de/en/aussenpolitik/themen/239362-239362",
+  "raw_text": "Welcome\nThe German Biosecurity Programme\nHigh-security laboratory of the Robert Koch Institute in Berlin © Maurizio Gambarini/dpa\nGermany is carrying out long term biosecurity projects in its German Biosecurity Programme.\nIn 2013, the Federal Foreign Office launched the German Biosecurity Programme in order to implement sustainable biosafety and biosecurity projects in various countries under the auspices of the G7 Global Partnership against the Spread of Weapons and Materials of Mass Destruction. Furthermore, the programme is contributing to strengthening the Biological Weapons Convention (BWC). The third programme phase is running from 2020 until 2022 and is currently active in nine countries as well as with two supraregional projects.\nThe Programme is intended to help partner countries tackle biological threats, such as the intentional misuse of biological pathogens and toxins or outbreaks of highly pathogenic diseases and pandemics. The aim is not only to prevent any misuse of infectious agents that could also pose a threat to Germany, but also to strengthen the health capacities of our partner countries in Africa, Central Asia and Eastern Europe, thus enhancing their national security.\nThe Programme encompasses a range of projects implemented in cooperation with German institutions:\n- Robert Koch Institute (RKI)\n- Deutsche Gesellschaft für Internationale Zusammenarbeit (GIZ)\n- Bernhard Nocht Institute for Tropical Medicine (BNI)\n- Friedrich Loeffler Institute, Federal Research Institute for Animal Health (FLI)\n- Bundeswehr Institute of Microbiology\nThe main regional focus is on Africa and Central Asia. Priority is given to six areas: awareness raising; biosafety and biosecurity; surveillance; detection and diagnostics; networking; and capacity development.\nWith a budget of over 45 million euros for the years 2013 until 2019 and around 16,72 million euros for 2020 until 2022, we are supporting partner countries to minimise biological threats and the corresponding risks of proliferation.",
+  "hints": {
+    "name": "German Biosecurity Programme",
+    "lead_org": "Robert Koch Institute (RKI), GIZ, BNITM, FLI, IMB",
+    "country": "Africa, Central Asia, Eastern Europe",
+    "type": "bilateral",
+    "active_status": "active",
+    "region": "europe"
+  },
+  "expected_label": "accept",
+  "rationale": "German Biosecurity Programme — bilateral capacity building"
+}

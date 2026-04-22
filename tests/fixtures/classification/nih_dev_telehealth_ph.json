@@ -1,0 +1,14 @@
+{
+  "url": "https://nih-dev.telehealth.ph",
+  "raw_text": "𝗚𝗲𝘁 𝗮 𝗚𝗹𝗶𝗺𝗽𝘀𝗲 𝗼𝗳 𝘁𝗵𝗲 𝗦𝗲𝘀𝘀𝗶𝗼𝗻𝘀 𝗮𝘁 𝘁𝗵𝗲 𝟮𝟴𝘁𝗵 𝗡𝗜𝗛 𝗔𝗻𝗻𝗶𝘃𝗲𝗿𝘀𝗮𝗿𝘆 𝗖𝗼𝗻𝗳𝗲𝗿𝗲𝗻𝗰𝗲\nCelebrate 28 Years of Research Excellence with NIH–UP Manila. The National Institutes of Health, University of the Philippines Manila, invites you to its 28th Anniversary Conference on February 26, 2026, from 8:00 AM to 5:00 PM, at the Ramon Magsaysay Center, Manila.\nThis year’s theme, “Addressing Global Challenges: Strengthening Research Collaborations through One Health,” highlights the critical intersections of human, animal, and environmental health.",
+  "hints": {
+    "name": "Philippine Advanced Biorisk Officers Training (PhABOT)",
+    "lead_org": "NCBB (UP Manila)",
+    "country": "Philippines",
+    "type": "national_training",
+    "active_status": "active",
+    "region": "southeast_asia"
+  },
+  "expected_label": "review",
+  "rationale": "NIH anniversary conference page, thin content, unclear if PhABOT program"
+}

@@ -16,39 +16,55 @@ cp env.example .env           # add ANTHROPIC_API_KEY
 
 ## Running the pipeline
 
-**MVP scope is Stage 1 + Stage 2 only**. Stage 3 (dedup) is designed but not yet in scope.
+**MVP scope is Stage 1 + Stage 2 + Stage 3**. Stage 4 (dedup) is designed but not yet in scope.
 
 ```bash
 # Stage 1: fetch page content → data/raw/*.json
 python src/stage1_ingest.py
 
-# Stage 2: extract structured fields via Claude API → output/stage2_results.csv
-python src/stage2_extract.py
+# Stage 2: classify records (Batch API) → data/classified/*.json
+python src/stage2_classify.py
+
+# Stage 3: extract structured fields for accepted records → output/stage3_results.csv
+python src/stage3_extract.py
+
+# Calibration (run before first pipeline use to tune thresholds)
+python scripts/calibrate_classifier.py
 ```
 
 ## Data flow
 
 ```
-data/work_queue.csv  →  [Stage 1]  →  data/raw/*.json  →  [Stage 2]  →  output/stage2_results.csv
+data/work_queue.csv → [Stage 1] → data/raw/*.json → [Stage 2] → data/classified/*.json → [Stage 3] → output/stage3_results.csv
 ```
 
-`data/raw/` and `output/` are generated artifacts — both are gitignored and must never be committed. `.env` contains the Anthropic API key and is also gitignored.
+`data/raw/`, `data/classified/`, and `output/` are generated artifacts — all are gitignored and must never be committed. `.env` contains the Anthropic API key and is also gitignored.
 
 ## Architecture
 
-Stages are decoupled by file artifacts so each can be re-run independently. Persisting raw page content in Stage 1 means Stage 2 can be re-run as the schema evolves without re-fetching pages.
+Stages are decoupled by file artifacts so each can be re-run independently. Persisting raw page content in Stage 1 means later stages can be re-run as the schema evolves without re-fetching pages.
 
 ### Stage 1 — Ingest (`src/stage1_ingest.py`)
 
 Reads `data/work_queue.csv`. For each row: fetches page content via `trafilatura`, with a Playwright fallback for JS-rendered pages. Writes one JSON file to `data/raw/` per record, including `fetch_method`, `fetched_at`, and `fetch_status` (`ok` | `failed` | `partial`).
 
-Failed fetches still produce a JSON and flow through to Stage 2 — failures are never silently dropped.
+Failed fetches still produce a JSON and flow through — failures are never silently dropped.
 
 Work queue columns: `url`, `name_hint`, `lead_org_hint`, `country_hint`, `type_hint`, `active_status_hint`, `region_hint`, `source_doc_id`. All hint columns are nested under `hints{}` in the Stage 1 JSON output to mark the provenance boundary — everything inside `hints` is unverified Gemini output; everything outside is pipeline-produced.
 
-### Stage 2 — Extract (`src/stage2_extract.py`)
+### Stage 2 — Classify (`src/stage2_classify.py`)
 
-Reads Stage 1 JSON files. Makes one Claude API call per record using **forced tool use** against a tool definition that mirrors the 17-field extraction schema. Each extracted field value must include an `evidence` snippet.
+Filters non-biosecurity URLs before extraction. Submits all Stage 1 records as a single Anthropic Batch API request using Haiku 4.5 (`claude-haiku-4-5-20251001`). Classifies each page as a pipeline entity or not, with tiered routing:
+
+- **accept**: `is_pipeline_entity == true` AND `confidence >= 0.85` → extracted in Stage 3
+- **rejected**: `is_pipeline_entity == false` AND `confidence >= 0.95` → skipped in Stage 3
+- **review**: everything else → skipped in Stage 3, flagged for human review
+
+Thresholds are in `config/classification.yaml`, tuned via `scripts/calibrate_classifier.py` against labeled fixtures in `tests/fixtures/classification/`. Calibration report: `docs/calibration_report.md`.
+
+### Stage 3 — Extract (`src/stage3_extract.py`)
+
+Reads Stage 2 classified JSON files. Only calls Claude API for records with `classification_status == "accept"`. Non-accepted records pass through with empty extraction fields.
 
 Key implementation rules:
 - **Model**: pinned to `claude-sonnet-4-6`, never `"latest"`
@@ -56,11 +72,11 @@ Key implementation rules:
 - **Evidence grounding**: each field's `evidence` snippet is fuzzy-matched against `raw_text` using `rapidfuzz.partial_ratio >= 90`, after normalizing (lowercase, collapse whitespace, strip punctuation). Evidence snippets must be verbatim from `raw_text`. Fields that fail grounding are retained but marked `grounded: false`
 - **Retries**: up to 3 times with exponential backoff on parse errors, missing required fields, or API errors. After all retries fail, emit a record with `extraction_status: "failed"` and a populated `failure_reason` — it still flows downstream
 
-### Stage 3 — Dedup and Write (`src/stage3_dedup_write.py`) *(not MVP)*
+### Stage 4 — Dedup and Write (`src/stage4_dedup_write.py`) *(not MVP)*
 
 Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicates via exact match then cosine similarity (`sentence-transformers` `all-MiniLM-L6-v2`, threshold 0.80 — provisional, validate against labeled duplicates). Writes results to a CSV.
 
-`needs_review` is finalized once in Stage 3, not set incrementally. It is `true` if any of: `fetch_status != "ok"`, `extraction_status != "ok"`, any field has `grounded: false`, `hint_conflicts` non-empty, or cosine similarity ≥ 0.80.
+`needs_review` is finalized once in Stage 4, not set incrementally. It is `true` if any of: `fetch_status != "ok"`, `extraction_status != "ok"`, any field has `grounded: false`, `hint_conflicts` non-empty, or cosine similarity ≥ 0.80.
 
 ## Key design decisions
 
@@ -69,8 +85,8 @@ Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicat
 - **`hints{}` boundary**: hint columns from the work queue are unverified Gemini output. Nesting them under `hints` in Stage 1 JSON marks this clearly. Do not promote hint values to top-level fields or treat them as ground truth.
 - **17-field schema is fixed**: Stage 2 uses forced tool use against a schema defined in `docs/design.md`. Do not add, remove, or rename fields without updating the schema table there first.
 - **Evidence must be verbatim**: grounding verification uses fuzzy string match against `raw_text`. Paraphrased evidence will fail the check.
-- **Model is pinned**: always `claude-sonnet-4-6`, never a floating alias.
-- **`needs_review` is set once**: Stage 3 collects all conditions and sets the flag in one place. Do not set it earlier in the pipeline.
+- **Models are pinned**: extraction uses `claude-sonnet-4-6`, classification uses `claude-haiku-4-5-20251001`. Never use floating aliases.
+- **`needs_review` is set once**: Stage 4 collects all conditions and sets the flag in one place. Do not set it earlier in the pipeline.
 
 ## Extraction schema (17 fields)
 

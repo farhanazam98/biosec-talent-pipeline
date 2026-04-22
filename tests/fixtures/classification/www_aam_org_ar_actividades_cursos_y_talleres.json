@@ -1,0 +1,14 @@
+{
+  "url": "https://www.aam.org.ar/actividades/cursos-y-talleres",
+  "raw_text": "Actividades cientificas\nPOR INICIAR\n3er Encuentro Interdisciplinario - AVANCES EN EL DIAGNOSTICO DE TUBERCULOSIS\n-. Actividad virtual no arancelada, con inscripción previa .-\nVer másPOR INICIAR\nLAL Test: Endotoxinas Bacterianas.-\n-.CIERRE DE INSCRIPCIÓN - 10 de MAYO 2026.-\nVer másPOR INICIAR\nJornada de Actualización en TRICHINELLOSIS\n-. Actividad virtual no arancelada, con inscripción previa .-\nVer másPOR INICIAR\n¿QUÉ INVESTIGAMOS EN CUYO? - ÁREA CLÍNICA.-\n-. Actividad virtual no arancelada, con inscripción previa .-\nVer másPOR INICIAR\nMICOSIS RESPIRATORIAS EN PERSONAS VIVIENDO CON VIH. BASADO EN CASOS CLÍNICOS\n-.CIERRE DE INSCRIPCIÓN - 28 de ABRIL 2026.-\nVer másINICIADO\nCICLO FEDERAL DE DISCUSIÓN DE CASOS CLÍNICOS - Edición 2026.-\nACTIVIDAD NO ARANCELADA CON INSCRIPCION PREVIA\nVer másFINALIZADO\nCONSENSO DE EXPERTOS: Sepsis y muestras respiratorias, estandarización preanalítica.-\nActividad no arancelada Precongreso SADEBAC 2026\nVer más",
+  "hints": {
+    "name": "AAM Biosafety Courses *(Active)*",
+    "lead_org": "Asociación Argentina de Microbiología",
+    "country": "Argentina",
+    "type": "association_training",
+    "active_status": "unknown",
+    "region": "south_america"
+  },
+  "expected_label": "review",
+  "rationale": "Spanish microbiology courses — may include biosafety but unclear from snippet"
+}

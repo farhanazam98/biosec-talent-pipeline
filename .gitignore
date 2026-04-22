@@ -4,5 +4,6 @@ __pycache__/
 *.pyo
 output/
 data/raw/
+data/classified/
 .venv/
 venv/
