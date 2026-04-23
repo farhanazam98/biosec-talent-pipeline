@@ -9,6 +9,7 @@ Usage:
 """
 
 import asyncio
+import csv
 import glob
 import json
 import os
@@ -28,6 +29,7 @@ from stage2_classify import (
 load_dotenv()
 
 FIXTURES_DIR = "tests/fixtures/classification"
+LABELS_CSV = "docs/labeling_candidates.csv"
 REPORT_PATH = "docs/calibration_report.md"
 MAX_RETRIES = 3
 CONCURRENCY = 5
@@ -125,7 +127,45 @@ def evaluate_thresholds(results, accept_thresh, reject_thresh):
     return counts
 
 
+def sync_labels_from_csv():
+    """Sync expected_label from the labeling CSV into fixture JSON files."""
+    if not os.path.exists(LABELS_CSV):
+        print(f"No labeling CSV found at {LABELS_CSV}, using existing fixture labels.")
+        return
+
+    with open(LABELS_CSV, encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        url_to_label = {}
+        for row in reader:
+            label = row.get("suggested_label", "").strip()
+            url = row.get("url", "").strip()
+            if url and label:
+                url_to_label[url] = label
+
+    fixture_files = sorted(glob.glob(os.path.join(FIXTURES_DIR, "*.json")))
+    updated = 0
+    for path in fixture_files:
+        with open(path, encoding="utf-8") as f:
+            fixture = json.load(f)
+        url = fixture.get("url", "")
+        if url in url_to_label:
+            new_label = url_to_label[url]
+            if fixture.get("expected_label") != new_label:
+                fixture["expected_label"] = new_label
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(fixture, f, ensure_ascii=False, indent=2)
+                updated += 1
+
+    if updated:
+        print(f"Synced labels from {LABELS_CSV}: {updated} fixture(s) updated.")
+    else:
+        print(f"Labels from {LABELS_CSV} already match fixtures.")
+
+
 async def main():
+    # Sync labels from CSV into fixtures
+    sync_labels_from_csv()
+
     # Load fixtures
     fixture_files = sorted(glob.glob(os.path.join(FIXTURES_DIR, "*.json")))
     if not fixture_files:
