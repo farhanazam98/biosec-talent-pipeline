@@ -259,6 +259,8 @@ def process_extraction_result(tool_input: dict, record: dict) -> dict:
     annotated_fields = {}
     for field in FIELDS:
         entry = tool_input[field]
+        if isinstance(entry, str):
+            entry = {"value": entry, "evidence": ""}
         annotated_fields[field] = {
             "value": entry.get("value", ""),
             "evidence": entry.get("evidence", ""),
