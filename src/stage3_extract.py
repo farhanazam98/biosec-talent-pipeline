@@ -267,7 +267,7 @@ def process_extraction_result(tool_input: dict, record: dict) -> dict:
             "grounded": check_grounding(entry.get("evidence", ""), raw_text),
         }
 
-    hint_conflicts = detect_hint_conflicts(tool_input, hints)
+    hint_conflicts = detect_hint_conflicts(annotated_fields, hints)
 
     return {
         "extraction_status": "ok",
