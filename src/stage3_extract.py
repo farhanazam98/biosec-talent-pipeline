@@ -219,6 +219,16 @@ def normalize(text: str) -> str:
     return text
 
 
+PIPE_DELIMITED_FIELDS = {"focus_area", "career_stage", "country", "languages"}
+
+
+def normalize_pipe_field(value: str) -> str:
+    if not value:
+        return value
+    items = [re.sub(r"\s*\(.*?\)", "", item).strip() for item in value.split("|")]
+    return "|".join(item for item in items if item)
+
+
 def check_grounding(evidence: str, raw_text: str) -> bool:
     if not evidence or not evidence.strip():
         return False
@@ -261,8 +271,11 @@ def process_extraction_result(tool_input: dict, record: dict) -> dict:
         entry = tool_input[field]
         if isinstance(entry, str):
             entry = {"value": entry, "evidence": ""}
+        val = entry.get("value", "")
+        if field in PIPE_DELIMITED_FIELDS:
+            val = normalize_pipe_field(val)
         annotated_fields[field] = {
-            "value": entry.get("value", ""),
+            "value": val,
             "evidence": entry.get("evidence", ""),
             "grounded": check_grounding(entry.get("evidence", ""), raw_text),
         }
