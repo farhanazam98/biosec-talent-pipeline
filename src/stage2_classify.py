@@ -13,7 +13,7 @@ load_dotenv()
 RAW_DIR = "data/raw"
 CLASSIFIED_DIR = "data/classified"
 CONFIG_PATH = "config/classification.yaml"
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-sonnet-4-6"
 POLL_INTERVAL = 30  # seconds between batch status checks
 
 SYSTEM_PROMPT = """\
@@ -37,6 +37,7 @@ A URL is in scope if it describes ANY of the following:
 ## Out of Scope
 
 - Articles, reports, blog posts, press releases about programs or the field
+- Job postings or hiring pages, even if they describe an in-scope program
 - National biosecurity strategy documents and white papers
 - Generic org "about us" or homepage URLs without a specific program described
 - Funders with no named biosecurity focus
@@ -49,7 +50,7 @@ A URL is in scope if it describes ANY of the following:
 - **Inactive or closed programs** → IN SCOPE. Activity status is a separate field, not a rejection criterion.
 - **Degree programs with a biosecurity module or specialization** → IN SCOPE if the biosecurity content is substantive (not a single elective among many).
 - **Multi-country programs** (e.g., Erasmus Mundus) → IN SCOPE as a single entity.
-- **One Health programs** → IN SCOPE only if they explicitly address deliberate or accidental biological risk (GCBR-relevant framing), not general zoonoses surveillance.
+- **One Health programs** → IN SCOPE. One Health programs addressing human-animal-environment health interfaces are considered biosecurity-relevant.
 
 ## Confidence Calibration
 
@@ -62,7 +63,7 @@ Examples:
 - A fellowship page titled "Emerging Leaders in Biosecurity" with a detailed curriculum → is_pipeline_entity: true, confidence: 0.95
 - A university homepage listing 50 departments with no specific biosecurity program described → is_pipeline_entity: false, confidence: 0.92
 - A news article about a new biosecurity fellowship → is_pipeline_entity: false, confidence: 0.90
-- A One Health program that mentions "antimicrobial resistance" but not deliberate biological threats → is_pipeline_entity: false, confidence: 0.65
+- A One Health MSc covering infectious disease emergence and zoonoses → is_pipeline_entity: true, confidence: 0.85
 - A funder page that lists biosecurity as one of 20 grant areas with no dedicated program → is_pipeline_entity: false, confidence: 0.70
 - An inactive fellowship with only a brief archived description remaining → is_pipeline_entity: true, confidence: 0.75
 
@@ -88,11 +89,6 @@ CLASSIFY_TOOL = {
                 "type": "boolean",
                 "description": "True if the page describes an in-scope biosecurity talent pipeline entity.",
             },
-            "entity_type": {
-                "type": "string",
-                "enum": ["program", "funder", "other"],
-                "description": "Type of entity. Use 'program' for training/fellowship/course, 'funder' for funding organizations, 'other' if in scope but neither.",
-            },
             "confidence": {
                 "type": "number",
                 "description": "Confidence score from 0.0 to 1.0. High only when the page clearly matches an in-scope or out-of-scope pattern.",
@@ -106,7 +102,7 @@ CLASSIFY_TOOL = {
                 "description": "A verbatim snippet from the page supporting the decision.",
             },
         },
-        "required": ["is_pipeline_entity", "entity_type", "confidence", "reasoning", "evidence"],
+        "required": ["is_pipeline_entity", "confidence", "reasoning", "evidence"],
     },
 }
 
@@ -154,11 +150,19 @@ def main():
         return
 
     records = {}
+    skipped = 0
     for path in raw_files:
         with open(path, encoding="utf-8") as f:
             record = json.load(f)
-        custom_id = url_to_filename(record["url"])
+        if record.get("fetch_status") == "failed":
+            skipped += 1
+            continue
+        filename = url_to_filename(record["url"])
+        # Batch API custom_id: alphanumeric, hyphens, underscores only, max 64 chars
+        custom_id = filename.replace(".json", "")[:64]
         records[custom_id] = record
+    if skipped:
+        print(f"Skipped {skipped} records with fetch_status=failed")
 
     # Clear previous output
     os.makedirs(CLASSIFIED_DIR, exist_ok=True)
@@ -204,11 +208,7 @@ def main():
         time.sleep(POLL_INTERVAL)
         batch = client.messages.batches.retrieve(batch.id)
         counts = batch.request_counts
-        print(
-            f"  Status: {batch.processing_status} | "
-            f"succeeded={counts.succeeded} failed={counts.errored} "
-            f"processing={counts.processing} pending={counts.pending}"
-        )
+        print(f"  Status: {batch.processing_status} | {counts}")
 
     print(f"Batch complete. Processing results...")
 
@@ -236,24 +236,21 @@ def main():
                 record["classification_confidence"] = confidence
                 record["classification_reasoning"] = tool_input.get("reasoning", "")
                 record["classification_evidence"] = tool_input.get("evidence", "")
-                record["entity_type"] = tool_input.get("entity_type", "other")
 
             except Exception as e:
                 record["classification_status"] = "error"
                 record["classification_confidence"] = 0.0
                 record["classification_reasoning"] = f"Parse error: {e}"
                 record["classification_evidence"] = ""
-                record["entity_type"] = ""
         else:
             error_msg = str(result.result.error) if hasattr(result.result, "error") else "Unknown batch error"
             record["classification_status"] = "error"
             record["classification_confidence"] = 0.0
             record["classification_reasoning"] = error_msg
             record["classification_evidence"] = ""
-            record["entity_type"] = ""
 
         # Write classified record
-        out_path = os.path.join(CLASSIFIED_DIR, custom_id)
+        out_path = os.path.join(CLASSIFIED_DIR, custom_id + ".json")
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(record, f, ensure_ascii=False, indent=2)
 

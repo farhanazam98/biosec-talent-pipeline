@@ -9,6 +9,6 @@
     "active_status": "unknown",
     "region": "southeast_asia"
   },
-  "expected_label": "review",
+  "expected_label": "rejected",
   "rationale": "Resource/links page listing biosecurity orgs, not a program itself"
 }

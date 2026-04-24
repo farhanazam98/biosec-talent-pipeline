@@ -9,6 +9,6 @@
     "active_status": "concluded",
     "region": "west_asia"
   },
-  "expected_label": "review",
-  "rationale": "Saudi biosafety/biosecurity forum — conference or structured training?"
+  "expected_label": "rejected",
+  "rationale": "One-off conference/forum event, not a structured program"
 }

@@ -54,7 +54,7 @@ Work queue columns: `url`, `name_hint`, `lead_org_hint`, `country_hint`, `type_h
 
 ### Stage 2 — Classify (`src/stage2_classify.py`)
 
-Filters non-biosecurity URLs before extraction. Submits all Stage 1 records as a single Anthropic Batch API request using Haiku 4.5 (`claude-haiku-4-5-20251001`). Classifies each page as a pipeline entity or not, with tiered routing:
+Filters non-biosecurity URLs before extraction. Submits all Stage 1 records as a single Anthropic Batch API request using Sonnet 4.6 (`claude-sonnet-4-6`). Classifies each page as a pipeline entity or not, with tiered routing:
 
 - **accept**: `is_pipeline_entity == true` AND `confidence >= 0.85` → extracted in Stage 3
 - **rejected**: `is_pipeline_entity == false` AND `confidence >= 0.95` → skipped in Stage 3
@@ -83,25 +83,26 @@ Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicat
 **Do not change without understanding these:**
 
 - **`hints{}` boundary**: hint columns from the work queue are unverified Gemini output. Nesting them under `hints` in Stage 1 JSON marks this clearly. Do not promote hint values to top-level fields or treat them as ground truth.
-- **17-field schema is fixed**: Stage 2 uses forced tool use against a schema defined in `docs/design.md`. Do not add, remove, or rename fields without updating the schema table there first.
+- **17-field schema is fixed**: Stage 3 uses forced tool use against a schema defined in `docs/design.md`. Do not add, remove, or rename fields without updating the schema table there first. `pipeline_category` is derived programmatically from `pipeline_type`, not extracted.
 - **Evidence must be verbatim**: grounding verification uses fuzzy string match against `raw_text`. Paraphrased evidence will fail the check.
-- **Models are pinned**: extraction uses `claude-sonnet-4-6`, classification uses `claude-haiku-4-5-20251001`. Never use floating aliases.
+- **Models are pinned**: both extraction and classification use `claude-sonnet-4-6`. Never use floating aliases.
 - **`needs_review` is set once**: Stage 4 collects all conditions and sets the flag in one place. Do not set it earlier in the pipeline.
 
-## Extraction schema (17 fields)
+## Extraction schema (17 extracted fields + 1 derived)
 
 | # | Field | Notes |
 |---|---|---|
 | 1 | Name & Title | Full official program name |
 | 2 | Organisation Providing Course | Host / delivering organization |
-| 3 | Pipeline Type | `formal_training` \| `fellowship_competition` \| `gov_multilateral` |
+| 3 | Pipeline Type | `degree` \| `certificate` \| `short_course` \| `summer_school` \| `online` \| `fellowship` \| `internship` \| `competition` \| `scholarship` \| `mentorship` \| `conference` \| `association` \| `gov_training` \| `bilateral` \| `multilateral` \| `regional_body` \| `lab_network` \| `funder_initiative` \| `national_strategy` \| `other` |
+| 3b | Pipeline Category | Derived from Pipeline Type: `formal_training` \| `non_degree_structured` \| `gov_institutional` |
 | 4 | Country | Country/countries where delivered |
 | 5 | Organisation Funding Course | Funder(s) |
 | 6 | Expected Outcomes | Stated learning or career outcomes |
 | 7 | Syllabus / Course Materials | Topics, modules, curriculum links |
-| 8 | Target Audience | Career stage, background, nationality requirements |
-| 9 | Financial Support Available | Stipends, scholarships, travel grants, waivers |
-| 10 | Visa / Travel Constraints | Nationality restrictions, travel obligations |
+| 8 | Career Stage | `undergraduate \| postgraduate \| early_career \| mid_career \| senior \| professional \| unknown` (pipe-delimited) |
+| 9 | Financial Support Available | `full \| partial \| free \| none \| unknown` |
+| 10 | Visa / Travel Constraints | `yes \| no \| n/a \| unknown` |
 | 11 | Language(s) | Delivery language(s) |
 | 12 | Year Established | Year founded or first offered |
 | 13 | Income Classification | `HIC` \| `LMIC` \| `Both` |

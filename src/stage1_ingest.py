@@ -114,14 +114,23 @@ async def fetch(url: str) -> tuple:
     return await fetch_with_playwright(url)
 
 
+# Normalize old work queue category names to current taxonomy
+HINT_TYPE_MAPPING = {
+    "formal_training": "formal_training",
+    "fellowship_competition": "non_degree_structured",
+    "gov_multilateral": "gov_institutional",
+}
+
+
 def build_record(row: dict, raw_text: str, fetch_method: str, fetch_status: str) -> dict:
+    raw_type = row["type_hint"]
     return {
         "url": row["url"],
         "hints": {
             "name": row["name_hint"],
             "lead_org": row["lead_org_hint"],
             "country": row["country_hint"],
-            "type": row["type_hint"],
+            "type": HINT_TYPE_MAPPING.get(raw_type, raw_type),
             "active_status": row["active_status_hint"],
             "region": row["region_hint"],
         },

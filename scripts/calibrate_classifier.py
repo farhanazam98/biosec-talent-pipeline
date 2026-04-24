@@ -32,7 +32,7 @@ FIXTURES_DIR = "tests/fixtures/classification"
 LABELS_CSV = "docs/labeling_candidates.csv"
 REPORT_PATH = "docs/calibration_report.md"
 MAX_RETRIES = 3
-CONCURRENCY = 5
+CONCURRENCY = 3
 
 THRESHOLD_GRID = [0.70, 0.75, 0.80, 0.85, 0.90, 0.95]
 
@@ -69,7 +69,6 @@ async def classify_one(sem, client, fixture, index, total):
                 result = {
                     "is_pipeline_entity": tool_input["is_pipeline_entity"],
                     "confidence": tool_input["confidence"],
-                    "entity_type": tool_input.get("entity_type", "other"),
                     "reasoning": tool_input.get("reasoning", ""),
                 }
                 print(f"  [{index}/{total}] {fixture['url'][:80]} -> entity={result['is_pipeline_entity']} conf={result['confidence']:.2f}")
@@ -83,7 +82,6 @@ async def classify_one(sem, client, fixture, index, total):
                     return fixture, {
                         "is_pipeline_entity": False,
                         "confidence": 0.0,
-                        "entity_type": "other",
                         "reasoning": f"Error: {e}",
                     }
 

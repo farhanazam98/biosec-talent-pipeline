@@ -16,7 +16,33 @@ CLASSIFIED_DIR = "data/classified"
 OUTPUT_CSV = "output/stage3_results.csv"
 MODEL = "claude-sonnet-4-6"
 MAX_RETRIES = 3
-CONCURRENCY = 5  # max simultaneous Claude API calls — tune up if rate limits allow
+CONCURRENCY = 1  # sequential to stay within 30k input tokens/min rate limit
+REQUEST_DELAY = 3  # seconds between API calls
+
+PIPELINE_TYPE_TO_CATEGORY = {
+    "degree": "formal_training",
+    "certificate": "formal_training",
+    "short_course": "formal_training",
+    "summer_school": "formal_training",
+    "online": "formal_training",
+    "fellowship": "non_degree_structured",
+    "internship": "non_degree_structured",
+    "competition": "non_degree_structured",
+    "scholarship": "non_degree_structured",
+    "mentorship": "non_degree_structured",
+    "conference": "non_degree_structured",
+    "association": "non_degree_structured",
+    "gov_training": "gov_institutional",
+    "bilateral": "gov_institutional",
+    "multilateral": "gov_institutional",
+    "regional_body": "gov_institutional",
+    "lab_network": "gov_institutional",
+    "funder_initiative": "gov_institutional",
+    "national_strategy": "gov_institutional",
+    "other": "",
+}
+
+PIPELINE_TYPES = list(PIPELINE_TYPE_TO_CATEGORY.keys())
 
 FIELDS = [
     "name_and_title",
@@ -26,7 +52,7 @@ FIELDS = [
     "organisation_funding_course",
     "expected_outcomes",
     "syllabus_course_materials",
-    "target_audience",
+    "career_stage",
     "financial_support_available",
     "visa_travel_constraints",
     "languages",
@@ -41,7 +67,32 @@ FIELDS = [
 FIELD_DESCRIPTIONS = {
     "name_and_title": "Full official program name",
     "organisation_providing_course": "Host / delivering organization",
-    "pipeline_type": "One of: formal_training | fellowship_competition | gov_multilateral",
+    "pipeline_type": (
+        "Exactly one of these values:\n"
+        "FORMAL TRAINING CATEGORY:\n"
+        "  degree — full degree program (BSc, MSc, PhD, MPH) with biosecurity content\n"
+        "  certificate — non-degree credential program (professional certificate, diploma)\n"
+        "  short_course — bounded training (days to weeks), instructor-led, not degree-bearing\n"
+        "  summer_school — intensive residential program, typically annual, aimed at students/early-career\n"
+        "  online — self-paced, open-access, or MOOC-style course not fitting above\n"
+        "NON-DEGREE STRUCTURED OPPORTUNITIES CATEGORY:\n"
+        "  fellowship — funded position with structured activities and defined cohort\n"
+        "  internship — time-bounded placement at a host organization\n"
+        "  competition — competitive event with biosecurity-relevant challenges\n"
+        "  scholarship — financial award tied to study/research in biosecurity\n"
+        "  mentorship — structured mentor-mentee pairing with defined program activities\n"
+        "  conference — conference with a structured early-career track (not general attendance)\n"
+        "  association — specific program or certification run by a professional association\n"
+        "GOVERNMENT & INSTITUTIONAL CATEGORY:\n"
+        "  gov_training — government-run domestic training program\n"
+        "  bilateral — two-country capacity-building partnership\n"
+        "  multilateral — multi-country or international org training initiative\n"
+        "  regional_body — program run by a regional body (e.g., Africa CDC, EU agency)\n"
+        "  lab_network — training delivered through a laboratory network\n"
+        "  funder_initiative — program run or funded by a dedicated biosecurity funder\n"
+        "  national_strategy — training component of a national strategy document (rare)\n"
+        "  other — use only if nothing above fits"
+    ),
     "country": (
         "Pipe-delimited list of full country names where the program is delivered (e.g. USA|Canada). "
         "Use 'Global' if not specific to any country or if 40+ countries are covered. "
@@ -50,7 +101,18 @@ FIELD_DESCRIPTIONS = {
     "organisation_funding_course": "Funder(s) of the program",
     "expected_outcomes": "Stated learning or career outcomes",
     "syllabus_course_materials": "Topics, modules, or curriculum links",
-    "target_audience": "Career stage, background, or nationality requirements for applicants",
+    "career_stage": (
+        "Pipe-delimited list from this vocabulary: "
+        "undergraduate | postgraduate | early_career | mid_career | senior | professional | unknown. "
+        "undergraduate = current BSc/BA students. "
+        "postgraduate = current MSc/PhD students or recent graduates. "
+        "early_career = 0-5 years post-degree professionals. "
+        "mid_career = 5-15 years professional experience. "
+        "senior = 15+ years or leadership/director level. "
+        "professional = practicing professionals (lab staff, clinicians, officials) regardless of seniority. "
+        "unknown = not mentioned on the page. "
+        "Choose all that apply."
+    ),
     "financial_support_available": (
         "Classify as exactly one of: full | partial | free | none | unknown. "
         "full = tuition, stipend, and/or living costs covered. "
@@ -60,9 +122,10 @@ FIELD_DESCRIPTIONS = {
         "unknown = not mentioned on the page."
     ),
     "visa_travel_constraints": (
-        "Classify as exactly one of: yes | no | unknown. "
+        "Classify as exactly one of: yes | no | n/a | unknown. "
         "yes = any visa requirement, travel obligation, or nationality restriction is mentioned. "
         "no = page explicitly states no constraints. "
+        "n/a = not applicable (e.g. fully online courses with no travel component). "
         "unknown = not mentioned on the page."
     ),
     "languages": (
@@ -92,11 +155,13 @@ FIELD_DESCRIPTIONS = {
 }
 
 # Hints that map directly to extracted fields for conflict detection
+# "type" hint is a category-level value (e.g. "formal_training") compared
+# against pipeline_category derived from the fine-grained pipeline_type
 HINT_TO_FIELD = {
     "name": "name_and_title",
     "lead_org": "organisation_providing_course",
     "country": "country",
-    "type": "pipeline_type",
+    "type": "pipeline_category",
 }
 
 TOOL_DEFINITION = {
@@ -128,10 +193,22 @@ def build_system_prompt(hints: dict) -> str:
         f"- Name: {hints.get('name', 'unknown')}\n"
         f"- Host organization: {hints.get('lead_org', 'unknown')}\n"
         f"- Country: {hints.get('country', 'unknown')}\n"
-        f"- Type: {hints.get('type', 'unknown')}\n\n"
+        f"- Category: {hints.get('type', 'unknown')}\n\n"
         "Confirm or correct each field based on the page content. "
         "For every field, provide a verbatim snippet from the page as evidence. "
-        "If a field is not mentioned on the page, set both value and evidence to empty strings."
+        "If a field is not mentioned on the page, set both value and evidence to empty strings.\n\n"
+        "## Pipeline Type\n\n"
+        "The category hint above is a broad grouping from a prior research pass. "
+        "For the pipeline_type field, extract the specific type from the page content — "
+        "do not inherit the category hint.\n\n"
+        "Examples:\n"
+        "- An MSc in Biosecurity → pipeline_type: degree\n"
+        "- A 5-day WHO workshop → pipeline_type: short_course\n"
+        "- ELBI Fellowship with annual cohort → pipeline_type: fellowship\n"
+        "- German Biosecurity Programme (bilateral capacity building) → pipeline_type: bilateral\n"
+        "- IFBA mentorship pairing program → pipeline_type: mentorship\n"
+        "- Africa CDC certification for biosafety professionals → pipeline_type: association\n"
+        "- Open Philanthropy biosecurity grants → pipeline_type: funder_initiative"
     )
 
 
@@ -149,10 +226,19 @@ def check_grounding(evidence: str, raw_text: str) -> bool:
 
 
 def detect_hint_conflicts(fields: dict, hints: dict) -> list:
+    # Derive pipeline_category from extracted pipeline_type for comparison
+    pipeline_type_val = fields.get("pipeline_type", {}).get("value", "")
+    derived_category = PIPELINE_TYPE_TO_CATEGORY.get(pipeline_type_val, "")
+
     conflicts = []
     for hint_key, field_key in HINT_TO_FIELD.items():
         hint_val = hints.get(hint_key, "")
-        extracted_val = fields.get(field_key, {}).get("value", "")
+        if field_key == "pipeline_category":
+            extracted_val = derived_category
+            evidence = fields.get("pipeline_type", {}).get("evidence", "")
+        else:
+            extracted_val = fields.get(field_key, {}).get("value", "")
+            evidence = fields.get(field_key, {}).get("evidence", "")
         if not hint_val or not extracted_val:
             continue
         if normalize(hint_val) != normalize(extracted_val):
@@ -160,7 +246,7 @@ def detect_hint_conflicts(fields: dict, hints: dict) -> list:
                 "field": field_key,
                 "hint_value": hint_val,
                 "extracted_value": extracted_val,
-                "evidence": fields[field_key].get("evidence", ""),
+                "evidence": evidence,
             })
     return conflicts
 
@@ -207,6 +293,12 @@ async def extract(client: anthropic.AsyncAnthropic, record: dict) -> dict:
                 "failure_reason": "",
             }
 
+        except anthropic.RateLimitError as e:
+            last_error = str(e)
+            if attempt < MAX_RETRIES - 1:
+                wait = 30 * (2 ** attempt)  # 30s, 60s, 120s
+                print(f"  Rate limited. Waiting {wait}s before retry {attempt + 1}/{MAX_RETRIES}...")
+                await asyncio.sleep(wait)
         except Exception as e:
             last_error = str(e)
             if attempt < MAX_RETRIES - 1:
@@ -231,7 +323,6 @@ def build_csv_row(record: dict, result: dict) -> dict:
         "classification_status": record.get("classification_status", ""),
         "classification_confidence": record.get("classification_confidence", ""),
         "classification_reasoning": record.get("classification_reasoning", ""),
-        "entity_type": record.get("entity_type", ""),
         "extraction_status": result["extraction_status"],
         "failure_reason": result.get("failure_reason", ""),
         "hint_conflicts": json.dumps(result["hint_conflicts"]) if result["hint_conflicts"] else "",
@@ -241,14 +332,24 @@ def build_csv_row(record: dict, result: dict) -> dict:
     }
     for field in FIELDS:
         row[field] = result["fields"][field]["value"]
+    # Derive pipeline_category from extracted pipeline_type
+    pipeline_type = row.get("pipeline_type", "")
+    row["pipeline_category"] = PIPELINE_TYPE_TO_CATEGORY.get(pipeline_type, "")
     return row
 
+
+# Build CSV columns with pipeline_category inserted after pipeline_type
+_FIELDS_WITH_CATEGORY = []
+for f in FIELDS:
+    _FIELDS_WITH_CATEGORY.append(f)
+    if f == "pipeline_type":
+        _FIELDS_WITH_CATEGORY.append("pipeline_category")
 
 CSV_COLUMNS = (
     ["url", "source_doc_id", "fetch_status", "fetch_method", "fetched_at",
      "classification_status", "classification_confidence", "classification_reasoning",
-     "entity_type", "extraction_status", "failure_reason"]
-    + FIELDS
+     "extraction_status", "failure_reason"]
+    + _FIELDS_WITH_CATEGORY
     + ["ungrounded_fields", "hint_conflicts"]
 )
 
@@ -264,6 +365,7 @@ async def process_file(sem: asyncio.Semaphore, client: anthropic.AsyncAnthropic,
             result = await extract(client, record)
             status = result["extraction_status"]
             print(f"[{status}] ({index}/{total}) {record['url']}")
+            await asyncio.sleep(REQUEST_DELAY)
         else:
             # Skip extraction for review/rejected/error records
             empty_fields = {f: {"value": "", "evidence": "", "grounded": False} for f in FIELDS}

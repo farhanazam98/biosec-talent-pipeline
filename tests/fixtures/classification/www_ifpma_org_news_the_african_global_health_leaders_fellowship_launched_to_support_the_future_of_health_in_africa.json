@@ -9,6 +9,6 @@
     "active_status": "unknown",
     "region": "africa"
   },
-  "expected_label": "rejected",
+  "expected_label": "accept",
   "rationale": "News article about a general health fellowship launch"
 }

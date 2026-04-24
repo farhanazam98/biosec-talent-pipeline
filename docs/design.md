@@ -46,7 +46,7 @@ Stage 1 produces a persistent, timestamped snapshot of each source page. Persist
 | `region_hint` | e.g. `north_america`, `south_asia` |
 | `source_doc_id` | Provenance back to the originating Gemini doc |
 
-`type_hint` corresponds to the three Gemini prompt categories. The fine-grained `Format` field is extracted from page content in Stage 2.
+`type_hint` corresponds to the three Gemini prompt categories. Stage 1 normalizes these to the current pipeline category names (`formal_training`, `non_degree_structured`, `gov_institutional`) before storing them in `hints.type`. The fine-grained `pipeline_type` is extracted from page content in Stage 3.
 
 Hints are nested under `hints` in the output to mark the provenance boundary: everything inside is unverified Gemini output, everything outside is pipeline-produced.
 
@@ -96,7 +96,7 @@ For each row: fetch page content via `trafilatura` with a Playwright fallback fo
 
 **Input:** Stage 1 output (`data/raw/*.json`).
 
-**Purpose:** Stage 1 input comes from Gemini Deep Research prompts that prioritize recall — the URLs include non-biosecurity entries (funder landing pages, press releases, generic org homepages). This stage filters records before extraction using a lightweight classifier (Haiku 4.5) to reduce API costs and noise.
+**Purpose:** Stage 1 input comes from Gemini Deep Research prompts that prioritize recall — the URLs include non-biosecurity entries (funder landing pages, press releases, generic org homepages). This stage filters records before extraction using Sonnet 4.6 (`claude-sonnet-4-6`) to reduce noise.
 
 **Processing:** All records are submitted as a single Anthropic Batch API request (`client.messages.batches.create()`). The classifier uses forced tool use (`classify_program`) against a detailed system prompt containing scope rules, edge cases, and confidence calibration guidance.
 
@@ -126,7 +126,6 @@ The system prompt is cached across all records via `cache_control: {"type": "eph
 ```json
 {
   "is_pipeline_entity": true,
-  "entity_type": "program | funder | other",
   "confidence": 0.92,
   "reasoning": "One sentence explaining the decision",
   "evidence": "Verbatim snippet from the page"
@@ -161,8 +160,7 @@ Same structure as Stage 1 JSON, enriched with classification fields:
   "classification_status": "accept | review | rejected | error",
   "classification_confidence": 0.92,
   "classification_reasoning": "One-sentence explanation",
-  "classification_evidence": "Verbatim snippet from raw_text",
-  "entity_type": "program | funder | other"
+  "classification_evidence": "Verbatim snippet from raw_text"
 }
 ```
 
@@ -187,7 +185,7 @@ Thresholds were tuned using `scripts/calibrate_classifier.py` against 40 labeled
 
 #### Output (`output/stage3_results.csv`)
 
-CSV columns include classification metadata from Stage 2 (`classification_status`, `classification_confidence`, `classification_reasoning`, `entity_type`) followed by extraction fields. All records from Stage 2 appear in the CSV — non-accepted records have empty extraction fields.
+CSV columns include classification metadata from Stage 2 (`classification_status`, `classification_confidence`, `classification_reasoning`) followed by extraction fields. `pipeline_category` is derived programmatically from `pipeline_type`. All records from Stage 2 appear in the CSV — non-accepted records have empty extraction fields.
 ```
 
 ---
@@ -202,14 +200,15 @@ The pipeline distinguishes the **extraction schema** (what Claude returns in Sta
 |---|---|---|
 | 1 | Name & Title | Full official program name |
 | 2 | Organisation Providing Course | Host / delivering organization |
-| 3 | Pipeline Type | `formal_training` \| `fellowship_competition` \| `gov_multilateral` |
+| 3 | Pipeline Type | Fine-grained type: `degree` \| `certificate` \| `short_course` \| `summer_school` \| `online` \| `fellowship` \| `internship` \| `competition` \| `scholarship` \| `mentorship` \| `conference` \| `association` \| `gov_training` \| `bilateral` \| `multilateral` \| `regional_body` \| `lab_network` \| `funder_initiative` \| `national_strategy` \| `other` |
+| 3b | Pipeline Category | Derived from Pipeline Type: `formal_training` \| `non_degree_structured` \| `gov_institutional` (not extracted by Claude) |
 | 4 | Country | Country/countries where delivered |
 | 5 | Organisation Funding Course | Funder(s) |
 | 6 | Expected Outcomes | Stated learning or career outcomes |
 | 7 | Syllabus / Course Materials | Topics, modules, curriculum links |
-| 8 | Target Audience | Career stage, background, nationality requirements |
-| 9 | Financial Support Available | Stipends, scholarships, travel grants, waivers |
-| 10 | Visa / Travel Constraints | Nationality restrictions, travel obligations |
+| 8 | Career Stage | `undergraduate \| postgraduate \| early_career \| mid_career \| senior \| professional \| unknown` (pipe-delimited) |
+| 9 | Financial Support Available | `full \| partial \| free \| none \| unknown` |
+| 10 | Visa / Travel Constraints | `yes \| no \| n/a \| unknown` |
 | 11 | Language(s) | Delivery language(s) |
 | 12 | Year Established | Year founded or first offered |
 | 13 | Income Classification | `HIC` \| `LMIC` \| `Both` |
@@ -236,7 +235,6 @@ The pipeline distinguishes the **extraction schema** (what Claude returns in Sta
 | `review_reasons` | List of conditions that triggered `needs_review` |
 | `classification_status` | `accept` \| `review` \| `rejected` \| `error` |
 | `classification_confidence` | 0.0–1.0 confidence from classifier |
-| `entity_type` | `program` \| `funder` \| `other` |
 | `extraction_status` | `ok` \| `failed` \| `skipped` |
 | `fetch_status` | `ok` \| `failed` \| `partial` |
 | `hint_conflicts` | Fields where extraction disagreed with a Gemini hint |

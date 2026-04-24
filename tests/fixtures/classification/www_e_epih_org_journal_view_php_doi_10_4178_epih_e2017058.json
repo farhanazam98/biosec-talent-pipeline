@@ -9,6 +9,6 @@
     "active_status": "active",
     "region": "asia_pacific"
   },
-  "expected_label": "rejected",
+  "expected_label": "accept",
   "rationale": "Academic journal article about FETP, not a program page"
 }
