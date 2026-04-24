@@ -137,16 +137,12 @@ FIELD_DESCRIPTIONS = {
     "format": "e.g. in-person, online, hybrid, part-time, full-time",
     "focus_area": (
         "Pipe-delimited list of tags from this controlled vocabulary: "
-        "biosafety (lab biosafety, biorisk management, containment) | "
-        "biosecurity_policy (biosecurity governance, arms control, BWC, regulatory frameworks) | "
-        "biodefense (biodefense, CBRN defense, threat response) | "
+        "dna_synthesis_screening (nucleic acid synthesis screening, sequence screening) | "
+        "policy_governance (biosecurity governance, arms control, BWC, regulatory frameworks) | "
         "biosurveillance (disease surveillance, early warning, outbreak detection) | "
-        "dual_use (dual-use research of concern, DURC) | "
-        "laboratory_skills (lab techniques, diagnostics, capacity building) | "
-        "pandemic_preparedness (pandemic response, epidemic preparedness) | "
-        "health_security (health security systems, infectious disease control) | "
+        "lab_biosafety (lab biosafety, biorisk management, containment, lab techniques) | "
+        "pandemic_preparedness_and_response (pandemic response, epidemic preparedness, health security) | "
         "one_health (One Health, human-animal-environment interface) | "
-        "threat_assessment (risk assessment, strategic analysis, intelligence) | "
         "ai_biosecurity (AI risks in biology, AI biosecurity governance). "
         "Choose only tags that clearly apply. Use a short free-text value only if nothing fits."
     ),
@@ -332,6 +328,14 @@ def build_csv_row(record: dict, result: dict) -> dict:
     }
     for field in FIELDS:
         row[field] = result["fields"][field]["value"]
+    # Backfill from hints for records that were never extracted
+    hints = record.get("hints", {})
+    if not row.get("name_and_title"):
+        row["name_and_title"] = hints.get("name", "")
+    if not row.get("organisation_providing_course"):
+        row["organisation_providing_course"] = hints.get("lead_org", "")
+    if not row.get("country"):
+        row["country"] = hints.get("country", "")
     # Derive pipeline_category from extracted pipeline_type
     pipeline_type = row.get("pipeline_type", "")
     row["pipeline_category"] = PIPELINE_TYPE_TO_CATEGORY.get(pipeline_type, "")

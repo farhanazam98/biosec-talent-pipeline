@@ -107,7 +107,7 @@ Mints a deterministic `program_id` (hash of normalized `name + org`). Deduplicat
 | 12 | Year Established | Year founded or first offered |
 | 13 | Income Classification | `HIC` \| `LMIC` \| `Both` |
 | 14 | Format | e.g. in-person, online, hybrid, part-time, full-time |
-| 15 | Focus Area | e.g. biosurveillance, policy, lab biosafety, threat assessment |
+| 15 | Focus Area | `dna_synthesis_screening \| policy_governance \| biosurveillance \| lab_biosafety \| pandemic_preparedness_and_response \| one_health \| ai_biosecurity` (pipe-delimited) |
 | 16 | AI Risks Content Included | `Y` \| `N` |
 | 17 | Dual-Use Risks Content Included | `Y` \| `N` |
 

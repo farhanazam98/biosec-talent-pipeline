@@ -149,21 +149,6 @@ def main():
         print(f"No JSON files found in {RAW_DIR}. Run stage1_ingest.py first.")
         return
 
-    records = {}
-    skipped = 0
-    for path in raw_files:
-        with open(path, encoding="utf-8") as f:
-            record = json.load(f)
-        if record.get("fetch_status") == "failed":
-            skipped += 1
-            continue
-        filename = url_to_filename(record["url"])
-        # Batch API custom_id: alphanumeric, hyphens, underscores only, max 64 chars
-        custom_id = filename.replace(".json", "")[:64]
-        records[custom_id] = record
-    if skipped:
-        print(f"Skipped {skipped} records with fetch_status=failed")
-
     # Clear previous output
     os.makedirs(CLASSIFIED_DIR, exist_ok=True)
     existing = glob.glob(os.path.join(CLASSIFIED_DIR, "*.json"))
@@ -171,6 +156,29 @@ def main():
         os.remove(path)
     if existing:
         print(f"Cleared {len(existing)} existing files from {CLASSIFIED_DIR}/")
+
+    records = {}
+    skipped = 0
+    for path in raw_files:
+        with open(path, encoding="utf-8") as f:
+            record = json.load(f)
+        if record.get("fetch_status") == "failed":
+            # Write through to classified/ without calling the API
+            record["classification_status"] = "skipped"
+            record["classification_confidence"] = 0.0
+            record["classification_reasoning"] = "Skipped: fetch failed"
+            record["classification_evidence"] = ""
+            out_path = os.path.join(CLASSIFIED_DIR, url_to_filename(record["url"]))
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(record, f, ensure_ascii=False, indent=2)
+            skipped += 1
+            continue
+        filename = url_to_filename(record["url"])
+        # Batch API custom_id: alphanumeric, hyphens, underscores only, max 64 chars
+        custom_id = filename.replace(".json", "")[:64]
+        records[custom_id] = record
+    if skipped:
+        print(f"Wrote {skipped} fetch-failed records to {CLASSIFIED_DIR}/ (skipped classification)")
 
     # Build batch requests
     client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
