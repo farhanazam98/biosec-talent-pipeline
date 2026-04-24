@@ -1,10 +1,9 @@
-import asyncio
 import csv
 import glob
 import json
 import os
 import re
-from datetime import datetime, timezone
+import time
 
 import anthropic
 from dotenv import load_dotenv
@@ -15,9 +14,7 @@ load_dotenv()
 CLASSIFIED_DIR = "data/classified"
 OUTPUT_CSV = "output/stage3_results.csv"
 MODEL = "claude-sonnet-4-6"
-MAX_RETRIES = 3
-CONCURRENCY = 1  # sequential to stay within 30k input tokens/min rate limit
-REQUEST_DELAY = 3  # seconds between API calls
+POLL_INTERVAL = 30  # seconds between batch status checks
 
 PIPELINE_TYPE_TO_CATEGORY = {
     "degree": "formal_training",
@@ -182,6 +179,13 @@ TOOL_DEFINITION = {
 }
 
 
+def url_to_filename(url):
+    slug = re.sub(r"https?://", "", url)
+    slug = re.sub(r"[^a-zA-Z0-9]", "_", slug)
+    slug = re.sub(r"_+", "_", slug).strip("_")
+    return slug[:120] + ".json"
+
+
 def build_system_prompt(hints: dict) -> str:
     return (
         "You are extracting structured information about a biosecurity training program from its webpage content.\n\n"
@@ -247,65 +251,37 @@ def detect_hint_conflicts(fields: dict, hints: dict) -> list:
     return conflicts
 
 
-async def extract(client: anthropic.AsyncAnthropic, record: dict) -> dict:
-    hints = record.get("hints", {})
+def process_extraction_result(tool_input: dict, record: dict) -> dict:
+    """Process a successful extraction tool output into annotated fields."""
     raw_text = record.get("raw_text", "")
-    system = build_system_prompt(hints)
-    user_content = raw_text if raw_text.strip() else "[Page content could not be fetched.]"
+    hints = record.get("hints", {})
 
-    last_error = ""
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = await client.messages.create(
-                model=MODEL,
-                max_tokens=4096,
-                system=system,
-                tools=[TOOL_DEFINITION],
-                tool_choice={"type": "tool", "name": "extract_program_fields"},
-                messages=[{"role": "user", "content": user_content}],
-            )
-            tool_input = next(
-                block.input for block in response.content if block.type == "tool_use"
-            )
-            for field in FIELDS:
-                if field not in tool_input:
-                    raise ValueError(f"Missing required field: {field}")
+    annotated_fields = {}
+    for field in FIELDS:
+        entry = tool_input[field]
+        annotated_fields[field] = {
+            "value": entry.get("value", ""),
+            "evidence": entry.get("evidence", ""),
+            "grounded": check_grounding(entry.get("evidence", ""), raw_text),
+        }
 
-            annotated_fields = {}
-            for field in FIELDS:
-                entry = tool_input[field]
-                annotated_fields[field] = {
-                    "value": entry.get("value", ""),
-                    "evidence": entry.get("evidence", ""),
-                    "grounded": check_grounding(entry.get("evidence", ""), raw_text),
-                }
+    hint_conflicts = detect_hint_conflicts(tool_input, hints)
 
-            hint_conflicts = detect_hint_conflicts(tool_input, hints)
+    return {
+        "extraction_status": "ok",
+        "fields": annotated_fields,
+        "hint_conflicts": hint_conflicts,
+        "failure_reason": "",
+    }
 
-            return {
-                "extraction_status": "ok",
-                "fields": annotated_fields,
-                "hint_conflicts": hint_conflicts,
-                "failure_reason": "",
-            }
 
-        except anthropic.RateLimitError as e:
-            last_error = str(e)
-            if attempt < MAX_RETRIES - 1:
-                wait = 30 * (2 ** attempt)  # 30s, 60s, 120s
-                print(f"  Rate limited. Waiting {wait}s before retry {attempt + 1}/{MAX_RETRIES}...")
-                await asyncio.sleep(wait)
-        except Exception as e:
-            last_error = str(e)
-            if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(2 ** attempt)
-
+def make_empty_result(failure_reason: str) -> dict:
     empty_fields = {f: {"value": "", "evidence": "", "grounded": False} for f in FIELDS}
     return {
-        "extraction_status": "failed",
+        "extraction_status": "failed" if "error" in failure_reason.lower() else "skipped",
         "fields": empty_fields,
         "hint_conflicts": [],
-        "failure_reason": last_error,
+        "failure_reason": failure_reason,
     }
 
 
@@ -358,34 +334,7 @@ CSV_COLUMNS = (
 )
 
 
-async def process_file(sem: asyncio.Semaphore, client: anthropic.AsyncAnthropic,
-                       path: str, index: int, total: int) -> tuple:
-    async with sem:
-        with open(path, encoding="utf-8") as f:
-            record = json.load(f)
-
-        classification = record.get("classification_status", "")
-        if classification == "accept":
-            result = await extract(client, record)
-            status = result["extraction_status"]
-            print(f"[{status}] ({index}/{total}) {record['url']}")
-            await asyncio.sleep(REQUEST_DELAY)
-        else:
-            # Skip extraction for review/rejected/error records
-            empty_fields = {f: {"value": "", "evidence": "", "grounded": False} for f in FIELDS}
-            result = {
-                "extraction_status": "skipped",
-                "fields": empty_fields,
-                "hint_conflicts": [],
-                "failure_reason": f"classification_status={classification}",
-            }
-            print(f"[skipped:{classification}] ({index}/{total}) {record['url']}")
-
-        row = build_csv_row(record, result)
-        return index, row
-
-
-async def main():
+def main():
     classified_files = sorted(glob.glob(os.path.join(CLASSIFIED_DIR, "*.json")))
     if not classified_files:
         print(f"No JSON files found in {CLASSIFIED_DIR}. Run stage2_classify.py first.")
@@ -397,34 +346,132 @@ async def main():
         os.remove(OUTPUT_CSV)
         print(f"Cleared existing {OUTPUT_CSV}")
 
-    client = anthropic.AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    # Load all records, separate accepted from non-accepted
+    all_records = {}  # custom_id -> record
+    accepted = {}     # custom_id -> record (only accepted ones)
+    for path in classified_files:
+        with open(path, encoding="utf-8") as f:
+            record = json.load(f)
+        filename = url_to_filename(record["url"])
+        custom_id = filename.replace(".json", "")[:64]
+        all_records[custom_id] = record
+        if record.get("classification_status") == "accept":
+            accepted[custom_id] = record
 
-    # Count records by classification status
-    accept_count = sum(
-        1 for p in classified_files
-        if json.load(open(p, encoding="utf-8")).get("classification_status") == "accept"
-    )
-    print(f"Processing {len(classified_files)} records ({accept_count} accepted, "
-          f"{len(classified_files) - accept_count} skipped) (concurrency={CONCURRENCY})")
+    print(f"Loaded {len(all_records)} records ({len(accepted)} accepted for extraction, "
+          f"{len(all_records) - len(accepted)} skipped)")
 
-    sem = asyncio.Semaphore(CONCURRENCY)
-    tasks = [
-        process_file(sem, client, path, i, len(classified_files))
-        for i, path in enumerate(classified_files, 1)
-    ]
-    results = await asyncio.gather(*tasks)
+    # Build batch requests for accepted records
+    results = {}  # custom_id -> extraction result
 
-    # Sort by original index to preserve input order in the CSV
-    results.sort(key=lambda x: x[0])
+    if accepted:
+        client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+        batch_requests = []
+        for custom_id, record in accepted.items():
+            hints = record.get("hints", {})
+            raw_text = record.get("raw_text", "")
+            user_content = raw_text if raw_text.strip() else "[Page content could not be fetched.]"
+
+            batch_requests.append({
+                "custom_id": custom_id,
+                "params": {
+                    "model": MODEL,
+                    "max_tokens": 4096,
+                    "system": [
+                        {
+                            "type": "text",
+                            "text": build_system_prompt(hints),
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                    "tools": [TOOL_DEFINITION],
+                    "tool_choice": {"type": "tool", "name": "extract_program_fields"},
+                    "messages": [{"role": "user", "content": user_content}],
+                },
+            })
+
+        print(f"Submitting extraction batch of {len(batch_requests)} records...")
+        batch = client.messages.batches.create(requests=batch_requests)
+        print(f"Batch created: {batch.id}")
+
+        # Poll until complete
+        while batch.processing_status != "ended":
+            time.sleep(POLL_INTERVAL)
+            batch = client.messages.batches.retrieve(batch.id)
+            counts = batch.request_counts
+            print(f"  Status: {batch.processing_status} | {counts}")
+
+        print("Batch complete. Processing results...")
+
+        # Process batch results
+        ok_count = 0
+        fail_count = 0
+        for result in client.messages.batches.results(batch.id):
+            custom_id = result.custom_id
+            record = accepted[custom_id]
+
+            if result.result.type == "succeeded":
+                message = result.result.message
+                try:
+                    tool_input = next(
+                        block.input for block in message.content if block.type == "tool_use"
+                    )
+                    for field in FIELDS:
+                        if field not in tool_input:
+                            raise ValueError(f"Missing required field: {field}")
+
+                    results[custom_id] = process_extraction_result(tool_input, record)
+                    ok_count += 1
+                except Exception as e:
+                    results[custom_id] = make_empty_result(f"Parse error: {e}")
+                    fail_count += 1
+            else:
+                error_msg = str(result.result.error) if hasattr(result.result, "error") else "Unknown batch error"
+                results[custom_id] = make_empty_result(f"Batch error: {error_msg}")
+                fail_count += 1
+
+        print(f"Extraction results: {ok_count} ok, {fail_count} failed")
+
+    # Build CSV rows for all records (accepted + non-accepted)
+    rows = []
+    for custom_id in all_records:
+        record = all_records[custom_id]
+        if custom_id in results:
+            result = results[custom_id]
+        else:
+            classification = record.get("classification_status", "")
+            result = make_empty_result(f"classification_status={classification}")
+        rows.append(build_csv_row(record, result))
+
+    # Write CSV
     with open(OUTPUT_CSV, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         writer.writeheader()
-        for _, row in results:
+        for row in rows:
             writer.writerow(row)
 
+        # Append summary below last entry
+        summary_rows = [
+            ("Total records", len(rows)),
+            ("Successful fetch", sum(1 for r in rows if r.get("fetch_status") == "ok")),
+            ("Passes classification", sum(1 for r in rows if r.get("classification_status") == "accept")),
+            ("Successful extraction", sum(1 for r in rows if r.get("extraction_status") == "ok")),
+        ]
+
+        blank = {c: "" for c in CSV_COLUMNS}
+        writer.writerow(blank)
+        for label, value in summary_rows:
+            summary = {c: "" for c in CSV_COLUMNS}
+            summary["url"] = label
+            summary["source_doc_id"] = str(value)
+            writer.writerow(summary)
+
     print(f"\nDone. Results written to {OUTPUT_CSV}")
+    print(f"\n--- Pipeline Summary ---")
+    for label, value in summary_rows:
+        print(f"  {label}: {value}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -36,7 +36,6 @@ A URL is in scope if it describes ANY of the following:
 
 ## Out of Scope
 
-- Articles, reports, blog posts, press releases about programs or the field
 - Job postings or hiring pages, even if they describe an in-scope program
 - National biosecurity strategy documents and white papers
 - Generic org "about us" or homepage URLs without a specific program described
@@ -62,7 +61,7 @@ Your confidence score must be calibrated meaningfully:
 Examples:
 - A fellowship page titled "Emerging Leaders in Biosecurity" with a detailed curriculum → is_pipeline_entity: true, confidence: 0.95
 - A university homepage listing 50 departments with no specific biosecurity program described → is_pipeline_entity: false, confidence: 0.92
-- A news article about a new biosecurity fellowship → is_pipeline_entity: false, confidence: 0.90
+- A news article describing a biosecurity fellowship's structure, cohort, and activities → is_pipeline_entity: true, confidence: 0.82
 - A One Health MSc covering infectious disease emergence and zoonoses → is_pipeline_entity: true, confidence: 0.85
 - A funder page that lists biosecurity as one of 20 grant areas with no dedicated program → is_pipeline_entity: false, confidence: 0.70
 - An inactive fellowship with only a brief archived description remaining → is_pipeline_entity: true, confidence: 0.75
