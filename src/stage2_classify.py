@@ -41,6 +41,7 @@ A URL is in scope if it describes ANY of the following:
 - Generic org "about us" or homepage URLs without a specific program described
 - Funders with no named biosecurity focus
 - Programs outside biosecurity scope: general public health, general epidemiology, biotech unrelated to dual-use risk, agricultural/plant/livestock biosecurity
+- One Health programs (zoonoses, animal/livestock health, planetary health, human-animal-environment interface)
 - One-off events (single webinars, standalone lectures) without ongoing cohort structure
 - Professional associations as entities, unless the URL describes a specific certification or training program the association runs
 
@@ -49,7 +50,6 @@ A URL is in scope if it describes ANY of the following:
 - **Inactive or closed programs** → IN SCOPE. Activity status is a separate field, not a rejection criterion.
 - **Degree programs with a biosecurity module or specialization** → IN SCOPE if the biosecurity content is substantive (not a single elective among many).
 - **Multi-country programs** (e.g., Erasmus Mundus) → IN SCOPE as a single entity.
-- **One Health programs** → IN SCOPE. One Health programs addressing human-animal-environment health interfaces are considered biosecurity-relevant.
 
 ## Confidence Calibration
 
@@ -62,7 +62,7 @@ Examples:
 - A fellowship page titled "Emerging Leaders in Biosecurity" with a detailed curriculum → is_pipeline_entity: true, confidence: 0.95
 - A university homepage listing 50 departments with no specific biosecurity program described → is_pipeline_entity: false, confidence: 0.92
 - A news article describing a biosecurity fellowship's structure, cohort, and activities → is_pipeline_entity: true, confidence: 0.82
-- A One Health MSc covering infectious disease emergence and zoonoses → is_pipeline_entity: true, confidence: 0.85
+- A One Health MSc covering zoonotic disease emergence → is_pipeline_entity: false, confidence: 0.90
 - A funder page that lists biosecurity as one of 20 grant areas with no dedicated program → is_pipeline_entity: false, confidence: 0.70
 - An inactive fellowship with only a brief archived description remaining → is_pipeline_entity: true, confidence: 0.75
 

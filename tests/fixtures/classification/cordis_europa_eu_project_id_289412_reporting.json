@@ -9,6 +9,6 @@
     "active_status": "unknown",
     "region": "africa"
   },
-  "expected_label": "accept",
+  "expected_label": "rejected",
   "rationale": "Completed FP7 One Health training project in Sahel — inactive"
 }

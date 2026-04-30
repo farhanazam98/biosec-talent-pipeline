@@ -1,5 +1,5 @@
-heuristic_name_threshold: 92
-heuristic_org_threshold: 80
+heuristic_name_threshold: 95
+heuristic_org_threshold: 70
 borderline_name_lower: 80
 borderline_org_strong: 95
-claude_confidence_threshold: 0.70
+claude_confidence_threshold: 0.7

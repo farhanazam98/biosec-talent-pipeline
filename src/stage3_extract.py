@@ -139,7 +139,6 @@ FIELD_DESCRIPTIONS = {
         "biosurveillance (disease surveillance, early warning, outbreak detection) | "
         "lab_biosafety (lab biosafety, biorisk management, containment, lab techniques) | "
         "pandemic_preparedness_and_response (pandemic response, epidemic preparedness, health security) | "
-        "one_health (One Health, human-animal-environment interface) | "
         "ai_biosecurity (AI risks in biology, AI biosecurity governance). "
         "Choose only tags that clearly apply. Use a short free-text value only if nothing fits."
     ),

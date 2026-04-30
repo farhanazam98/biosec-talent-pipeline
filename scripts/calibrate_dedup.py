@@ -13,8 +13,11 @@ import csv
 import os
 import sys
 
+import yaml
+
 CANDIDATES_CSV = "tests/fixtures/duplicate_candidates.csv"
 REPORT_PATH = "docs/dedup_calibration.md"
+CONFIG_PATH = "config/dedup.yaml"
 
 NAME_THRESHOLDS = [85, 88, 90, 92, 95]
 ORG_THRESHOLDS = [70, 80, 90]
@@ -162,6 +165,19 @@ def main():
         f.write(f"Performance: precision={m['precision']:.3f}, recall={m['recall']:.3f}, f1={m['f1']:.3f}\n")
         f.write(f"(tp={m['tp']}, fp={m['fp']}, fn={m['fn']}, tn={m['tn']})\n")
     print(f"\nReport written to {REPORT_PATH}")
+
+    # Merge recommended values into existing config so non-calibrated keys
+    # (borderline_name_lower, borderline_org_strong) are preserved.
+    config = {}
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH) as f:
+            config = yaml.safe_load(f) or {}
+    config["heuristic_name_threshold"] = nt
+    config["heuristic_org_threshold"] = ot
+    config["claude_confidence_threshold"] = round(ct, 2)
+    with open(CONFIG_PATH, "w") as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+    print(f"Wrote thresholds to {CONFIG_PATH}")
 
 
 if __name__ == "__main__":

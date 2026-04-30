@@ -31,6 +31,7 @@ load_dotenv()
 FIXTURES_DIR = "tests/fixtures/classification"
 LABELS_CSV = "docs/labeling_candidates.csv"
 REPORT_PATH = "docs/calibration_report.md"
+CONFIG_PATH = "config/classification.yaml"
 MAX_RETRIES = 3
 CONCURRENCY = 3
 
@@ -288,6 +289,11 @@ async def main():
         f.write(f"Bumped to review: {best_counts['bumped_to_review']}\n")
 
     print(f"\nReport written to {REPORT_PATH}")
+
+    with open(CONFIG_PATH, "w") as f:
+        f.write(f"high_accept_threshold: {best_pair[0]:.2f}\n")
+        f.write(f"high_reject_threshold: {best_pair[1]:.2f}\n")
+    print(f"Wrote thresholds to {CONFIG_PATH}")
 
 
 if __name__ == "__main__":
