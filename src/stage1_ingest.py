@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import trafilatura
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
 
 load_dotenv()
 
@@ -61,67 +62,60 @@ def is_blocked(text: str) -> bool:
 
 
 def _http_get_sync(url: str) -> tuple:
-    """Blocking HTTP fetch — call via run_in_executor to avoid stalling the event loop."""
-    req = urllib.request.Request(url, headers=HTTP_HEADERS)
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.read().decode("utf-8", errors="replace"), resp.status
-    except urllib.error.HTTPError as e:
-        return None, e.code
-    except Exception:
-        return None, 0
+    """Blocking HTTP fetch. Returns (bytes_or_None, content_type, status_code).
 
-
-def _http_get_bytes_sync(url: str) -> tuple:
-    """Blocking byte fetch (for PDFs). Returns (bytes_or_None, status_code)."""
+    Returns raw bytes (not decoded) so the caller can route binary responses like
+    PDFs to the appropriate extractor based on Content-Type / magic bytes.
+    """
     req = urllib.request.Request(url, headers=HTTP_HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return resp.read(), resp.status
+            return resp.read(), resp.headers.get("Content-Type", "").lower(), resp.status
     except urllib.error.HTTPError as e:
-        return None, e.code
+        return None, "", e.code
     except Exception:
-        return None, 0
+        return None, "", 0
 
 
-def is_pdf_url(url: str) -> bool:
-    path = urllib.parse.urlparse(url).path.lower()
-    return path.endswith(".pdf")
+def _looks_like_pdf(body: bytes, content_type: str) -> bool:
+    return "application/pdf" in content_type or body[:4] == b"%PDF"
 
 
-async def fetch_pdf(url: str) -> tuple:
-    """Returns (raw_text, fetch_method, fetch_status). Downloads bytes and extracts via pypdf."""
+def _extract_pdf_text(body):
+    """Returns extracted text, or None on failure."""
+    from pypdf import PdfReader
+    try:
+        reader = PdfReader(io.BytesIO(body))
+        return "\n".join((p.extract_text() or "") for p in reader.pages)
+    except Exception:
+        return None
+
+
+async def fetch_via_http(url: str) -> tuple:
+    """Returns (raw_text, fetch_method, fetch_status).
+
+    Single HTTP path that branches on the response Content-Type:
+    - PDF body → pypdf, method='pdf'
+    - Otherwise → trafilatura on the decoded HTML, method='trafilatura'
+    """
     loop = asyncio.get_event_loop()
-    pdf_bytes, status_code = await loop.run_in_executor(None, _http_get_bytes_sync, url)
-    if not pdf_bytes or status_code == 0 or status_code >= 400:
-        return "", "pdf", "failed"
+    body, content_type, status_code = await loop.run_in_executor(None, _http_get_sync, url)
 
-    def _extract():
-        from pypdf import PdfReader
-        try:
-            reader = PdfReader(io.BytesIO(pdf_bytes))
-            return "\n".join((p.extract_text() or "") for p in reader.pages)
-        except Exception:
-            return None
+    if not body or status_code == 0 or status_code >= 400:
+        # Method depends on URL hint so the dispatcher knows whether playwright might still help.
+        path = urllib.parse.urlparse(url).path.lower()
+        method = "pdf" if path.endswith(".pdf") else "trafilatura"
+        return "", method, "failed"
 
-    text = await loop.run_in_executor(None, _extract)
-    if text is None:
-        return "", "pdf", "failed"
-    if not text.strip():
-        return "", "pdf", "partial"
-    return text, "pdf", "ok"
+    if _looks_like_pdf(body, content_type):
+        text = await loop.run_in_executor(None, _extract_pdf_text, body)
+        if text is None:
+            return "", "pdf", "failed"
+        if not text.strip():
+            return "", "pdf", "partial"
+        return text, "pdf", "ok"
 
-
-async def fetch_with_trafilatura(url: str) -> tuple:
-    """Returns (raw_text, fetch_method, fetch_status)."""
-    loop = asyncio.get_event_loop()
-    html, status_code = await loop.run_in_executor(None, _http_get_sync, url)
-
-    if status_code == 0 or status_code >= 400:
-        return "", "trafilatura", "failed"
-    if not html:
-        return "", "trafilatura", "failed"
-
+    html = body.decode("utf-8", errors="replace")
     text = await loop.run_in_executor(None, lambda: trafilatura.extract(html) or "")
     if not text.strip():
         return "", "trafilatura", "partial"
@@ -134,6 +128,7 @@ async def fetch_with_trafilatura(url: str) -> tuple:
 _pw = None
 _pw_browser = None
 _pw_lock = asyncio.Lock()
+_stealth = Stealth()
 
 
 async def _get_browser():
@@ -163,7 +158,8 @@ async def _block_heavy(route):
 
 
 async def fetch_with_playwright(url: str) -> tuple:
-    """Returns (raw_text, fetch_method, fetch_status)."""
+    """Returns (raw_text, fetch_method, fetch_status). Uses playwright-stealth to defeat
+    common bot-detection fingerprints (gov sites, Cloudflare, etc.)."""
     try:
         browser = await _get_browser()
         context = await browser.new_context(
@@ -172,6 +168,7 @@ async def fetch_with_playwright(url: str) -> tuple:
         )
         try:
             page = await context.new_page()
+            await _stealth.apply_stealth_async(page)
             await page.route("**/*", _block_heavy)
             response = await page.goto(url, timeout=60000, wait_until="domcontentloaded")
             status_code = response.status if response else 0
@@ -194,11 +191,13 @@ async def fetch_with_playwright(url: str) -> tuple:
 
 
 async def fetch(url: str) -> tuple:
-    """PDF URLs go straight to the PDF path; everything else tries trafilatura then playwright."""
-    if is_pdf_url(url):
-        return await fetch_pdf(url)
-    raw_text, method, status = await fetch_with_trafilatura(url)
+    """Try HTTP first (handles HTML and PDF via content-type detection); fall back to
+    playwright for HTML cases where the simple fetch failed. PDFs that fail can't be
+    rescued by playwright (chromium renders the PDF viewer, not the document text)."""
+    raw_text, method, status = await fetch_via_http(url)
     if status == "ok":
+        return raw_text, method, status
+    if method == "pdf":
         return raw_text, method, status
     return await fetch_with_playwright(url)
 

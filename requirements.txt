@@ -6,3 +6,4 @@ python-dotenv==1.1.0
 rapidfuzz==3.12.2
 pyyaml>=6.0
 pypdf>=4.0
+playwright-stealth>=2.0
