@@ -94,7 +94,7 @@ Thresholds in `config/dedup.yaml`. Calibrate via `scripts/calibrate_dedup.py` ag
 - **Evidence must be verbatim**: grounding verification uses fuzzy string match against `raw_text`. Paraphrased evidence will fail the check.
 - **Models are pinned**: both extraction and classification use `claude-sonnet-4-6`. Never use floating aliases.
 
-## Extraction schema (17 extracted fields + 1 derived)
+## Extraction schema (18 extracted fields + 1 derived)
 
 | # | Field | Notes |
 |---|---|---|
@@ -111,11 +111,12 @@ Thresholds in `config/dedup.yaml`. Calibrate via `scripts/calibrate_dedup.py` ag
 | 10 | Visa / Travel Constraints | `yes \| no \| n/a \| unknown` |
 | 11 | Language(s) | Delivery language(s) |
 | 12 | Year Established | Year founded or first offered |
-| 13 | Income Classification | `HIC` \| `LMIC` \| `Both` |
-| 14 | Format | e.g. in-person, online, hybrid, part-time, full-time |
-| 15 | Focus Area | `dna_synthesis_screening \| policy_governance \| biosurveillance \| lab_biosafety \| pandemic_preparedness_and_response \| ai_biosecurity` (pipe-delimited) |
-| 16 | AI Risks Content Included | `Y` \| `N` |
-| 17 | Dual-Use Risks Content Included | `Y` \| `N` |
+| 13 | Active Status | `active` \| `inactive` \| `unknown` |
+| 14 | Income Classification | `HIC` \| `LMIC` \| `Both` |
+| 15 | Format | e.g. in-person, online, hybrid, part-time, full-time |
+| 16 | Focus Area | `dna_synthesis_screening \| policy_governance \| biosurveillance \| lab_biosafety \| pandemic_preparedness_and_response \| ai_biosecurity` (pipe-delimited) |
+| 17 | AI Risks Content Included | `Y` \| `N` |
+| 18 | Dual-Use Risks Content Included | `Y` \| `N` |
 
 ## Code style
 

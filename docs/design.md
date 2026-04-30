@@ -208,7 +208,7 @@ Thresholds live in `config/dedup.yaml` and are calibrated via `scripts/calibrate
 
 ## Schemas
 
-### Extraction schema — 17 fields (Stage 3 tool definition)
+### Extraction schema — 18 fields (Stage 3 tool definition)
 
 | # | Field | Notes |
 |---|---|---|
@@ -225,11 +225,12 @@ Thresholds live in `config/dedup.yaml` and are calibrated via `scripts/calibrate
 | 10 | Visa / Travel Constraints | `yes \| no \| n/a \| unknown` |
 | 11 | Language(s) | Delivery language(s) |
 | 12 | Year Established | Year founded or first offered |
-| 13 | Income Classification | `HIC` \| `LMIC` \| `Both` |
-| 14 | Format | e.g. in-person, online, hybrid, part-time, full-time |
-| 15 | Focus Area | `dna_synthesis_screening \| policy_governance \| biosurveillance \| lab_biosafety \| pandemic_preparedness_and_response \| ai_biosecurity` (pipe-delimited) |
-| 16 | AI Risks Content Included | `Y` \| `N` |
-| 17 | Dual-Use Risks Content Included | `Y` \| `N` |
+| 13 | Active Status | `active` \| `inactive` \| `unknown` |
+| 14 | Income Classification | `HIC` \| `LMIC` \| `Both` |
+| 15 | Format | e.g. in-person, online, hybrid, part-time, full-time |
+| 16 | Focus Area | `dna_synthesis_screening \| policy_governance \| biosurveillance \| lab_biosafety \| pandemic_preparedness_and_response \| ai_biosecurity` (pipe-delimited) |
+| 17 | AI Risks Content Included | `Y` \| `N` |
+| 18 | Dual-Use Risks Content Included | `Y` \| `N` |
 
 ### Record metadata (written alongside content fields)
 

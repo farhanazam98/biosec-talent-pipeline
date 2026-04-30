@@ -54,6 +54,7 @@ FIELDS = [
     "visa_travel_constraints",
     "languages",
     "year_established",
+    "active_status",
     "income_classification",
     "format",
     "focus_area",
@@ -130,6 +131,14 @@ FIELD_DESCRIPTIONS = {
         "Omit parenthetical notes such as '(simultaneous interpretation)'."
     ),
     "year_established": "Year the program was founded or first offered",
+    "active_status": (
+        "Classify as exactly one of: active | inactive | unknown. "
+        "active = page indicates the program is currently running, has a recent or upcoming cohort, "
+        "open application window, or recent activity (within ~2 years of the page's most recent content). "
+        "inactive = page explicitly states the program has concluded, been discontinued, is no longer accepting applications, "
+        "or shows clear signals of being defunct (e.g. 'final cohort 2018', archived project page). "
+        "unknown = no clear signal either way."
+    ),
     "income_classification": "One of: HIC | LMIC | Both",
     "format": "e.g. in-person, online, hybrid, part-time, full-time",
     "focus_area": (
@@ -154,6 +163,7 @@ HINT_TO_FIELD = {
     "lead_org": "organisation_providing_course",
     "country": "country",
     "type": "pipeline_category",
+    "active_status": "active_status",
 }
 
 TOOL_DEFINITION = {
@@ -326,6 +336,8 @@ def build_csv_row(record: dict, result: dict) -> dict:
         row["organisation_providing_course"] = hints.get("lead_org", "")
     if not row.get("country"):
         row["country"] = hints.get("country", "")
+    if not row.get("active_status"):
+        row["active_status"] = hints.get("active_status", "")
     # Derive pipeline_category from extracted pipeline_type
     pipeline_type = row.get("pipeline_type", "")
     row["pipeline_category"] = PIPELINE_TYPE_TO_CATEGORY.get(pipeline_type, "")
