@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import csv
 import glob
@@ -153,25 +154,78 @@ async def process_row(sem: asyncio.Semaphore, row: dict, index: int, total: int)
         print(f"[{fetch_status}] ({index}/{total}) {url}")
 
 
-async def main():
-    os.makedirs(RAW_DIR, exist_ok=True)
+def cached_status(path: str) -> str:
+    """Return the fetch_status of a cached JSON, or empty string if unreadable."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f).get("fetch_status", "") or ""
+    except Exception:
+        return ""
 
-    existing = glob.glob(os.path.join(RAW_DIR, "*.json"))
-    for path in existing:
-        os.remove(path)
-    if existing:
-        print(f"Cleared {len(existing)} existing files from {RAW_DIR}/")
+
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-fetch all URLs, ignoring cached fetch results",
+    )
+    args = parser.parse_args()
+
+    os.makedirs(RAW_DIR, exist_ok=True)
 
     with open(WORK_QUEUE, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
 
-    print(f"Processing {len(rows)} records from {WORK_QUEUE} (concurrency={CONCURRENCY})")
+    # Build filename -> row map (dedupes URLs that appear twice in the work queue —
+    # Stage 1 writes one JSON per URL anyway).
+    expected_files = {}
+    for row in rows:
+        expected_files.setdefault(url_to_filename(row["url"]), row)
+
+    existing_files = {
+        os.path.basename(p) for p in glob.glob(os.path.join(RAW_DIR, "*.json"))
+    }
+
+    # Delete orphan JSONs whose URL is no longer in the work queue, so Stage 2
+    # doesn't reprocess dead records.
+    orphans = existing_files - set(expected_files)
+    for fname in orphans:
+        os.remove(os.path.join(RAW_DIR, fname))
+    if orphans:
+        print(f"Deleted {len(orphans)} orphan files (URL no longer in work queue)")
+
+    # Skip URLs whose cached JSON already has fetch_status: ok (unless --force).
+    # Re-fetch missing/failed/partial so previously-failed URLs get another chance.
+    rows_to_fetch = []
+    cached_ok = 0
+    for fname, row in expected_files.items():
+        path = os.path.join(RAW_DIR, fname)
+        if not args.force and os.path.exists(path) and cached_status(path) == "ok":
+            cached_ok += 1
+            continue
+        rows_to_fetch.append(row)
+
+    if args.force and existing_files:
+        print(f"--force: ignoring {len(existing_files - orphans)} cached entries")
+    elif cached_ok:
+        print(f"Skipping {cached_ok} URLs with cached fetch_status: ok")
+
+    if not rows_to_fetch:
+        print(f"Nothing to fetch. {cached_ok} cached entries in {RAW_DIR}/")
+        return
+
+    print(f"Fetching {len(rows_to_fetch)} URLs (concurrency={CONCURRENCY})")
 
     sem = asyncio.Semaphore(CONCURRENCY)
-    tasks = [process_row(sem, row, i, len(rows)) for i, row in enumerate(rows, 1)]
+    tasks = [
+        process_row(sem, row, i, len(rows_to_fetch))
+        for i, row in enumerate(rows_to_fetch, 1)
+    ]
     await asyncio.gather(*tasks)
 
-    print(f"\nDone. {len(rows)} files written to {RAW_DIR}/")
+    total = cached_ok + len(rows_to_fetch)
+    print(f"\nDone. {cached_ok} cached + {len(rows_to_fetch)} fetched = {total} files in {RAW_DIR}/")
 
 
 if __name__ == "__main__":
