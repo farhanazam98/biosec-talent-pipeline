@@ -2,9 +2,11 @@ import argparse
 import asyncio
 import csv
 import glob
+import io
 import json
 import os
 import re
+import urllib.parse
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -18,6 +20,15 @@ load_dotenv()
 WORK_QUEUE = "data/work_queue.csv"
 RAW_DIR = "data/raw"
 CONCURRENCY = 10  # max simultaneous fetches
+
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+HTTP_HEADERS = {
+    "User-Agent": UA,
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 # Phrases that indicate the page blocked the request rather than serving real content.
 BLOCK_SIGNALS = [
@@ -51,10 +62,7 @@ def is_blocked(text: str) -> bool:
 
 def _http_get_sync(url: str) -> tuple:
     """Blocking HTTP fetch — call via run_in_executor to avoid stalling the event loop."""
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; biosec-pipeline/1.0)"},
-    )
+    req = urllib.request.Request(url, headers=HTTP_HEADERS)
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8", errors="replace"), resp.status
@@ -62,6 +70,46 @@ def _http_get_sync(url: str) -> tuple:
         return None, e.code
     except Exception:
         return None, 0
+
+
+def _http_get_bytes_sync(url: str) -> tuple:
+    """Blocking byte fetch (for PDFs). Returns (bytes_or_None, status_code)."""
+    req = urllib.request.Request(url, headers=HTTP_HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read(), resp.status
+    except urllib.error.HTTPError as e:
+        return None, e.code
+    except Exception:
+        return None, 0
+
+
+def is_pdf_url(url: str) -> bool:
+    path = urllib.parse.urlparse(url).path.lower()
+    return path.endswith(".pdf")
+
+
+async def fetch_pdf(url: str) -> tuple:
+    """Returns (raw_text, fetch_method, fetch_status). Downloads bytes and extracts via pypdf."""
+    loop = asyncio.get_event_loop()
+    pdf_bytes, status_code = await loop.run_in_executor(None, _http_get_bytes_sync, url)
+    if not pdf_bytes or status_code == 0 or status_code >= 400:
+        return "", "pdf", "failed"
+
+    def _extract():
+        from pypdf import PdfReader
+        try:
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            return "\n".join((p.extract_text() or "") for p in reader.pages)
+        except Exception:
+            return None
+
+    text = await loop.run_in_executor(None, _extract)
+    if text is None:
+        return "", "pdf", "failed"
+    if not text.strip():
+        return "", "pdf", "partial"
+    return text, "pdf", "ok"
 
 
 async def fetch_with_trafilatura(url: str) -> tuple:
@@ -82,16 +130,54 @@ async def fetch_with_trafilatura(url: str) -> tuple:
     return text, "trafilatura", "ok"
 
 
+# Shared playwright instance — launching a fresh chromium per fetch is slow and crash-prone.
+_pw = None
+_pw_browser = None
+_pw_lock = asyncio.Lock()
+
+
+async def _get_browser():
+    global _pw, _pw_browser
+    async with _pw_lock:
+        if _pw_browser is None:
+            _pw = await async_playwright().start()
+            _pw_browser = await _pw.chromium.launch()
+    return _pw_browser
+
+
+async def _close_browser():
+    global _pw, _pw_browser
+    if _pw_browser is not None:
+        await _pw_browser.close()
+        _pw_browser = None
+    if _pw is not None:
+        await _pw.stop()
+        _pw = None
+
+
+async def _block_heavy(route):
+    if route.request.resource_type in {"image", "font", "media"}:
+        await route.abort()
+    else:
+        await route.continue_()
+
+
 async def fetch_with_playwright(url: str) -> tuple:
     """Returns (raw_text, fetch_method, fetch_status)."""
     try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            page = await browser.new_page()
-            response = await page.goto(url, timeout=30000)
+        browser = await _get_browser()
+        context = await browser.new_context(
+            user_agent=UA,
+            extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+        )
+        try:
+            page = await context.new_page()
+            await page.route("**/*", _block_heavy)
+            response = await page.goto(url, timeout=60000, wait_until="domcontentloaded")
             status_code = response.status if response else 0
             html = await page.content()
-            await browser.close()
+        finally:
+            await context.close()
     except Exception:
         return "", "playwright", "failed"
 
@@ -108,7 +194,9 @@ async def fetch_with_playwright(url: str) -> tuple:
 
 
 async def fetch(url: str) -> tuple:
-    """Try trafilatura first, fall back to playwright."""
+    """PDF URLs go straight to the PDF path; everything else tries trafilatura then playwright."""
+    if is_pdf_url(url):
+        return await fetch_pdf(url)
     raw_text, method, status = await fetch_with_trafilatura(url)
     if status == "ok":
         return raw_text, method, status
@@ -222,7 +310,10 @@ async def main():
         process_row(sem, row, i, len(rows_to_fetch))
         for i, row in enumerate(rows_to_fetch, 1)
     ]
-    await asyncio.gather(*tasks)
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        await _close_browser()
 
     total = cached_ok + len(rows_to_fetch)
     print(f"\nDone. {cached_ok} cached + {len(rows_to_fetch)} fetched = {total} files in {RAW_DIR}/")
