@@ -448,9 +448,8 @@ def dedup(rows, config, run_judge=True):
     return output_rows, set(confirmed), borderline_set, all_scores, verdicts, stats
 
 
-def write_output_csv(output_rows, fieldnames, stats, path):
+def write_output_csv(output_rows, fieldnames, funnel, path):
     out_columns = list(fieldnames) + ["program_id", "source_doc_ids", "duplicate_count"]
-    # Drop the original source_doc_id (replaced by source_doc_ids) only if it exists
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=out_columns, extrasaction="ignore")
         writer.writeheader()
@@ -460,11 +459,11 @@ def write_output_csv(output_rows, fieldnames, stats, path):
         blank = {c: "" for c in out_columns}
         writer.writerow(blank)
         summary = [
-            ("Input rows (Stage 3)", stats["input_rows"]),
-            ("Unique programs", stats["output_rows"]),
-            ("Duplicates removed", stats["duplicates_removed"]),
-            ("Pass 1 (heuristic) dupes", stats["pass1_dupes"]),
-            ("Pass 2 (Claude judge) dupes", stats["pass2_dupes"]),
+            ("Total records", funnel["total"]),
+            ("Successful fetch", funnel["fetched_ok"]),
+            ("Passes classification", funnel["classified_accept"]),
+            ("Successful extraction", funnel["extracted_ok"]),
+            ("Unique programs", funnel["unique_programs"]),
         ]
         for label, value in summary:
             row = {c: "" for c in out_columns}
@@ -495,25 +494,54 @@ def main():
     config = load_config()
     print(f"Config: {config}")
 
-    rows, fieldnames = read_stage3_csv(INPUT_CSV)
-    print(f"Loaded {len(rows)} rows from {INPUT_CSV}")
+    all_rows, fieldnames = read_stage3_csv(INPUT_CSV)
+
+    # Dedup runs only on successful extractions; everything else passes through
+    # unchanged so failures stay visible in the output.
+    ok_rows = [r for r in all_rows if r.get("extraction_status") == "ok"]
+    other_rows = [r for r in all_rows if r.get("extraction_status") != "ok"]
+    print(f"Loaded {len(all_rows)} rows ({len(ok_rows)} successful extractions, "
+          f"{len(other_rows)} pass-through)")
 
     output_rows, confirmed_set, borderline_set, all_scores, verdicts, stats = dedup(
-        rows, config, run_judge=not args.no_judge
+        ok_rows, config, run_judge=not args.no_judge
     )
 
+    # Append non-OK rows with empty dedup fields so the output CSV remains a complete audit trail.
+    for r in other_rows:
+        passthrough = dict(r)
+        passthrough["program_id"] = ""
+        passthrough["source_doc_ids"] = ""
+        passthrough["duplicate_count"] = 0
+        output_rows.append(passthrough)
+
+    funnel = {
+        "total": len(all_rows),
+        "fetched_ok": sum(1 for r in all_rows if r.get("fetch_status") == "ok"),
+        "classified_accept": sum(1 for r in all_rows if r.get("classification_status") == "accept"),
+        "extracted_ok": len(ok_rows),
+        "unique_programs": stats["output_rows"],
+        "duplicates_removed": stats["duplicates_removed"],
+        "pass1_dupes": stats["pass1_dupes"],
+        "pass2_dupes": stats["pass2_dupes"],
+        "borderline_pairs": stats["borderline_pairs"],
+    }
+
     os.makedirs("output", exist_ok=True)
-    write_output_csv(output_rows, fieldnames, stats, OUTPUT_CSV)
+    write_output_csv(output_rows, fieldnames, funnel, OUTPUT_CSV)
 
     if args.dump_candidates:
-        write_candidates_csv(rows, confirmed_set, borderline_set, all_scores, verdicts, config, CANDIDATES_CSV)
+        write_candidates_csv(ok_rows, confirmed_set, borderline_set, all_scores, verdicts, config, CANDIDATES_CSV)
 
     print("\n--- Stage 4 Summary ---")
-    print(f"  Input rows:       {stats['input_rows']}")
-    print(f"  Unique programs:  {stats['output_rows']}")
-    print(f"  Removed dupes:    {stats['duplicates_removed']}")
-    print(f"  Pass 1 dupes:     {stats['pass1_dupes']}")
-    print(f"  Pass 2 dupes:     {stats['pass2_dupes']} (of {stats['borderline_pairs']} borderline)")
+    print(f"  Total records:         {funnel['total']}")
+    print(f"  Successful fetch:      {funnel['fetched_ok']}")
+    print(f"  Passes classification: {funnel['classified_accept']}")
+    print(f"  Successful extraction: {funnel['extracted_ok']}")
+    print(f"  Unique programs:       {funnel['unique_programs']} "
+          f"(after removing {funnel['duplicates_removed']} dupes)")
+    print(f"  Pass 1 / Pass 2 dupes: {funnel['pass1_dupes']} / {funnel['pass2_dupes']} "
+          f"(of {funnel['borderline_pairs']} borderline)")
 
 
 if __name__ == "__main__":
